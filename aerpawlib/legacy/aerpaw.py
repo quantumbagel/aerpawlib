@@ -6,8 +6,8 @@ run in an AERPAW experiment, in which case it enables additional AERPAW
 functionality.
 """
 
-import asyncio
 import base64
+
 import requests
 
 _DEFAULT_CVM_IP = "192.168.32.25"

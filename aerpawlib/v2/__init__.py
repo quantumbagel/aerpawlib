@@ -2,43 +2,6 @@
 aerpawlib v2 API - MAVSDK-based vehicle control
 
 This module provides a modern, Pythonic API for vehicle control using MAVSDK.
-
-Features include:
-- Clean property-based state access (drone.state.heading, drone.battery.voltage)
-- Intuitive Coordinate-based navigation
-- Async-first design with MAVSDK backend
-- Simplified mission planning with waypoints
-- CommandHandle for non-blocking command execution with progress tracking
-
-Quick Start:
-    from aerpawlib.v2 import Drone, Coordinate, BasicRunner, entrypoint
-
-    class MyMission(BasicRunner):
-        @entrypoint
-        async def run(self, drone: Drone):
-            await drone.connect()
-            await drone.arm()
-            await drone.takeoff(altitude=10)
-            await drone.goto(coordinates=Coordinate(51.5, -0.1, 10, "Target"))
-            await drone.land()
-
-Non-blocking Commands:
-    Commands like goto, takeoff, land, rtl, set_heading, set_velocity, and orbit
-    support non-blocking execution via the `wait=False` parameter:
-
-        # Non-blocking goto with progress monitoring
-        handle = await drone.goto(latitude=51.5, longitude=-0.1, wait=False)
-        while handle.is_running:
-            print(f"Distance: {handle.progress.get('distance', '?')}m")
-            await asyncio.sleep(1)
-
-        # Cancel a command
-        await handle.cancel()
-
-        # Or just await the handle later
-        handle = await drone.goto(latitude=51.5, longitude=-0.1, wait=False)
-        # ... do other things ...
-        await handle  # Wait for completion
 """
 
 from .types import (
@@ -250,6 +213,40 @@ from .testing import (
     MockBattery,
 )
 
+# Logging
+from .logging import (
+    # Enums
+    LogLevel,
+    LogComponent,
+    # Configuration
+    LoggingConfig,
+    LoggingManager,
+    # Formatters
+    ColoredFormatter,
+    JSONFormatter,
+    TelemetryFormatter,
+    # Handlers
+    TelemetryHandler,
+    AsyncFileHandler,
+    # Data structures
+    StructuredLogRecord,
+    TelemetryPoint,
+    FlightLogMetadata,
+    # Flight recording
+    FlightDataRecorder,
+    # Adapter
+    LoggerAdapter,
+    # Module functions
+    get_manager,
+    configure_logging,
+    get_logger,
+    set_level,
+    get_flight_recorder,
+    # Decorators
+    log_call,
+    log_timing,
+)
+
 
 __all__ = [
     # Core types
@@ -391,5 +388,35 @@ __all__ = [
     "MockState",
     "MockGPS",
     "MockBattery",
+    # Logging - Enums
+    "LogLevel",
+    "LogComponent",
+    # Logging - Configuration
+    "LoggingConfig",
+    "LoggingManager",
+    # Logging - Formatters
+    "ColoredFormatter",
+    "JSONFormatter",
+    "TelemetryFormatter",
+    # Logging - Handlers
+    "TelemetryHandler",
+    "AsyncFileHandler",
+    # Logging - Data structures
+    "StructuredLogRecord",
+    "TelemetryPoint",
+    "FlightLogMetadata",
+    # Logging - Flight recording
+    "FlightDataRecorder",
+    # Logging - Adapter
+    "LoggerAdapter",
+    # Logging - Module functions
+    "get_manager",
+    "configure_logging",
+    "get_logger",
+    "set_level",
+    "get_flight_recorder",
+    # Logging - Decorators
+    "log_call",
+    "log_timing",
 ]
 

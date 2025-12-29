@@ -1,16 +1,12 @@
 """
 Types and functions commonly used throughout the aerpawlib framework.
 """
-from calendar import c
 import json
 import math
-import sys
-import yaml
-import os
-from typing import Dict, List, Tuple
-from pykml import parser
+from typing import List, Tuple
+
 import dronekit
-from math import sin, cos, sqrt, atan2, radians
+from pykml import parser
 
 
 class VectorNED:
@@ -194,9 +190,9 @@ class Coordinate:
         return bearing
 
     def __add__(self, o):
-        north = 0
-        east = 0
-        alt = 0
+        0
+        0
+        0
         if isinstance(o, VectorNED):
             north = o.north
             east = o.east

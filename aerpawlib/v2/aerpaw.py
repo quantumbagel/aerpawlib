@@ -22,16 +22,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-try:
-    import aiohttp
-    AIOHTTP_AVAILABLE = True
-except ImportError:
-    AIOHTTP_AVAILABLE = False
-    aiohttp = None
+# Require aiohttp; no synchronous fallback
+import aiohttp
 
-import requests
-
-logger = logging.getLogger(__name__)
+# Use modular logging system
+from .logging import get_logger, LogComponent
+logger = get_logger(LogComponent.AERPAW)
 
 
 class MessageSeverity(Enum):
@@ -153,7 +149,10 @@ class AERPAWPlatform:
         )
         self._connected = False
         self._connection_warning_displayed = False
-        self._session: Optional[aiohttp.ClientSession] = None
+        # Use a forward-reference string for the ClientSession type so static
+        # analyzers don't try to resolve attributes on the aiohttp module at
+        # import time.
+        self._session: Optional["aiohttp.ClientSession"] = None
 
     @property
     def connected(self) -> bool:
@@ -172,32 +171,22 @@ class AERPAWPlatform:
             await self._session.close()
             self._session = None
 
-        if AIOHTTP_AVAILABLE:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.config.timeout)
-            )
-            try:
-                async with self._session.post(
-                    f"{self.config.base_url}/ping"
-                ) as response:
-                    self._connected = response.status == 200
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                self._connected = False
+        # Always use aiohttp
+        self._session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.config.timeout)
+        )
+        try:
+            async with self._session.post(
+                f"{self.config.base_url}/ping"
+            ) as response:
+                self._connected = response.status == 200
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            self._connected = False
 
-            # Clean up session if connection failed
-            if not self._connected and self._session:
-                await self._session.close()
-                self._session = None
-        else:
-            # Fall back to synchronous requests
-            try:
-                requests.post(
-                    f"{self.config.base_url}/ping",
-                    timeout=self.config.timeout
-                )
-                self._connected = True
-            except requests.exceptions.RequestException:
-                self._connected = False
+        # Clean up session if connection failed
+        if not self._connected and self._session:
+            await self._session.close()
+            self._session = None
 
         # Reset warning flag on new connection attempt
         self._connection_warning_displayed = False
@@ -226,18 +215,16 @@ class AERPAWPlatform:
             return False
 
         try:
-            if AIOHTTP_AVAILABLE and self._session:
-                async with self._session.post(
-                    f"{self.config.base_url}/ping",
-                    timeout=aiohttp.ClientTimeout(total=self.config.timeout)
-                ) as response:
-                    return response.status == 200
-            else:
-                response = requests.post(
-                    f"{self.config.base_url}/ping",
-                    timeout=self.config.timeout
-                )
-                return response.status_code == 200
+            if self._session is None:
+                # No active session -> not healthy
+                self._connected = False
+                return False
+
+            async with self._session.post(
+                f"{self.config.base_url}/ping",
+                timeout=aiohttp.ClientTimeout(total=self.config.timeout)
+            ) as response:
+                return response.status == 200
         except Exception:
             self._connected = False
             return False
@@ -331,43 +318,31 @@ class AERPAWPlatform:
         url: str,
         timeout: float
     ) -> str:
-        """Execute a single HTTP request."""
-        if AIOHTTP_AVAILABLE and self._session:
-            try:
-                if method.upper() == "GET":
-                    async with self._session.get(
-                        url, timeout=aiohttp.ClientTimeout(total=timeout)
-                    ) as response:
-                        if response.status != 200:
-                            raise AERPAWRequestError(
-                                f"Request failed with status {response.status}"
-                            )
-                        return await response.text()
-                else:
-                    async with self._session.post(
-                        url, timeout=aiohttp.ClientTimeout(total=timeout)
-                    ) as response:
-                        if response.status != 200:
-                            raise AERPAWRequestError(
-                                f"Request failed with status {response.status}"
-                            )
-                        return await response.text()
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                raise AERPAWConnectionError(f"Request failed: {e}")
-        else:
-            # Synchronous fallback
-            try:
-                if method.upper() == "GET":
-                    response = requests.get(url, timeout=timeout)
-                else:
-                    response = requests.post(url, timeout=timeout)
-                if response.status_code != 200:
-                    raise AERPAWRequestError(
-                        f"Request failed with status {response.status_code}"
-                    )
-                return response.content.decode()
-            except requests.exceptions.RequestException as e:
-                raise AERPAWConnectionError(f"Request failed: {e}")
+        """Execute a single HTTP request using aiohttp."""
+        if self._session is None:
+            raise AERPAWConnectionError("No active aiohttp session")
+
+        try:
+            if method.upper() == "GET":
+                async with self._session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as response:
+                    if response.status != 200:
+                        raise AERPAWRequestError(
+                            f"Request failed with status {response.status}"
+                        )
+                    return await response.text()
+            else:
+                async with self._session.post(
+                    url, timeout=aiohttp.ClientTimeout(total=timeout)
+                ) as response:
+                    if response.status != 200:
+                        raise AERPAWRequestError(
+                            f"Request failed with status {response.status}"
+                        )
+                    return await response.text()
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            raise AERPAWConnectionError(f"Request failed: {e}")
 
     # OEO Console Logging
 
@@ -560,15 +535,12 @@ class AERPAW:
         )
         self._no_stdout = False
 
-        # Attempt synchronous connection check
+        # Attempt synchronous connection check using the async connect
         try:
-            requests.post(
-                f"http://{cvm_addr}:{cvm_port}/ping",
-                timeout=1
-            )
-            self._platform._connected = True
-        except requests.exceptions.RequestException:
-            self._platform._connected = False
+            self._run_async(self._platform.connect())
+        except Exception:
+            # If connect fails, platform.connect already sets _connected
+            pass
 
     @property
     def _connected(self) -> bool:

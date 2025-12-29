@@ -4,18 +4,20 @@ runnable using aerpawlib. The most basic framework is `Runner` -- any custom
 frameworks *must* extend it to be executable.
 
 This is the v1 API runner module, now using MAVSDK internally.
+
+@author: Julian Reder (quantumbagel)
 """
 
 import asyncio
-from enum import Enum, auto
 import inspect
+from enum import Enum, auto
 from typing import Callable, Dict, List
 
 import zmq
 import zmq.asyncio
 
 from .vehicle import Vehicle
-from ..zmqutil import *
+
 
 class Runner:
     """

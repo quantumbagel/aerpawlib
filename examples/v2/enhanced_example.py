@@ -10,24 +10,9 @@ This example shows:
 Usage:
     python -m examples.v2.enhanced_example
 """
-import asyncio
-from aerpawlib.v2 import (
-    Drone,
-    Coordinate,
-    VectorNED,
-    BasicRunner,
-    entrypoint,
-    sleep,
-    # Exceptions for error handling
-    ConnectionTimeoutError,
-    NotArmableError,
-    TakeoffError,
-    TakeoffTimeoutError,
-    GotoTimeoutError,
-    NavigationError,
-    AbortError,
-    AerpawlibError,
-)
+from aerpawlib.v2 import (AbortError, AerpawlibError, BasicRunner, ConnectionTimeoutError, Coordinate, Drone,
+                          GotoTimeoutError, NavigationError, NotArmableError, TakeoffError, TakeoffTimeoutError,
+                          VectorNED, entrypoint)  # Exceptions for error handling
 
 
 class EnhancedMission(BasicRunner):
@@ -164,7 +149,7 @@ class CoordinateDemo(BasicRunner):
     """
 
     @entrypoint
-    async def demo_coordinates(self, drone: Drone):
+    async def demo_coordinates(self):
         # Create a base coordinate
         base = Coordinate(35.7275, -78.6960, 0, "Home")
         print(f"Base: {base}")

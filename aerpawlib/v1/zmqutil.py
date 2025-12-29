@@ -1,4 +1,8 @@
-import asyncio
+"""
+ZMQ Proxy utility for aerpawlib. Unchanged from legacy version.
+
+@author: John Kesler (morzack)
+"""
 import zmq
 
 ZMQ_PROXY_IN_PORT = "5570"

@@ -4,6 +4,8 @@ Functionality exclusive to the AERPAW platform
 The AERPAW_Platform singleton will automatically detect if a script is being
 run in an AERPAW experiment, in which case it enables additional AERPAW
 functionality.
+
+@author: John Kesler (morzack)
 """
 
 import base64

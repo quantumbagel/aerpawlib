@@ -164,11 +164,7 @@ class MockDrone:
 
     # Connection
     async def connect(
-        self,
-        timeout: float = 30.0,
-        auto_reconnect: bool = False,
-        retry_count: int = 3,
-        retry_delay: float = 2.0
+        self
     ) -> bool:
         """Simulate connection (always succeeds unless configured to fail)."""
         await asyncio.sleep(0.01)  # Simulate brief delay
@@ -254,7 +250,7 @@ class MockDrone:
         await self._trigger_callbacks("on_arm")
         return True
 
-    async def disarm(self, force: bool = False) -> bool:
+    async def disarm(self) -> bool:
         """Simulate disarming."""
         await asyncio.sleep(0.01)
         self._armed = False
@@ -317,10 +313,8 @@ class MockDrone:
         longitude: Optional[float] = None,
         altitude: Optional[float] = None,
         coordinates: Optional[Coordinate] = None,
-        tolerance: float = 2.0,
-        speed: Optional[float] = None,
-        heading: Optional[float] = None,
-        timeout: float = 300.0
+            speed: Optional[float] = None,
+        heading: Optional[float] = None
     ):
         """Simulate navigation to a location."""
         if self._fail_on_goto:
@@ -365,7 +359,7 @@ class MockDrone:
         else:
             self.state.heading = start_pos.bearing_to(target)
 
-    async def set_heading(self, degrees: float, blocking: bool = True):
+    async def set_heading(self, degrees: float):
         """Simulate heading change."""
         self.state.heading = degrees % 360
 
@@ -382,7 +376,7 @@ class MockDrone:
             await self.hold()
 
     # Telemetry recording
-    def start_recording(self, interval: float = 0.1) -> None:
+    def start_recording(self) -> None:
         self._recording = True
         self._flight_log.clear()
 
@@ -415,7 +409,7 @@ class MockDrone:
 
     async def execute_waypoints(self, tolerance: float = 2.0):
         for wp in self._waypoints:
-            await self.goto(coordinates=wp.coordinate, tolerance=tolerance)
+            await self.goto(coordinates=wp.coordinate)
         self._waypoints.clear()
 
     # Utility methods for testing

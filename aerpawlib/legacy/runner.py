@@ -5,15 +5,15 @@ frameworks *must* extend it to be executable.
 """
 
 import asyncio
-from enum import Enum, auto
 import inspect
+from enum import Enum, auto
 from typing import Callable, Dict, List
 
 import zmq
 import zmq.asyncio
 
 from .vehicle import Vehicle
-from ..zmqutil import *
+
 
 class Runner:
     """

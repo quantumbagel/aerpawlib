@@ -4,12 +4,12 @@ scripts
 """
 import asyncio
 import math
-from dataclasses import dataclass
+import threading
+import time
+from typing import Callable
+
 import dronekit
 from pymavlink import mavutil
-import time
-import threading
-from typing import Callable
 
 from . import util
 from .aerpaw import AERPAW_Platform
@@ -30,7 +30,7 @@ class DummyVehicle:
     vehicle class for things that don't need vehicles
     """
     
-    def __init__(self, connection_string: str):
+    def __init__(self):
         pass
 
     def close(self):
@@ -108,7 +108,7 @@ class Vehicle:
                 self._has_heartbeat = True
         self._vehicle.add_attribute_listener("last_heartbeat", _heartbeat_listener)
 
-        def _abort_listener(_, __, value):
+        def _abort_listener(_, __):
             # TODO abort logic is more complicated :P
             # if value != "GUIDED":
             #     self._abort()
@@ -540,7 +540,7 @@ class Drone(Vehicle):
 
         self._ready_to_move = lambda self: False
 
-        heading = float('nan')
+        float('nan')
         if self._current_heading != None:
             heading = self._current_heading
         else:

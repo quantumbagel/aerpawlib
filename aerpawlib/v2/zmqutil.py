@@ -25,7 +25,9 @@ try:
 except ImportError:
     ZMQ_ASYNC_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+# Use modular logging system
+from .logging import get_logger, LogComponent
+logger = get_logger(LogComponent.ZMQ)
 
 
 # Default ports for the ZMQ proxy

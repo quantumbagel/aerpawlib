@@ -14,32 +14,14 @@ This module is kept for backward compatibility.
 """
 from __future__ import annotations
 
-# Re-export everything from safety.py for backward compatibility
-from .safety import (
-    # Enums
-    RequestType,
-    VehicleType,
-    # Configuration
-    SafetyConfig,
-    # Result types
-    ValidationResult,
-    # Client/Server
-    SafetyCheckerClient,
-    SafetyCheckerServer,
-    # Backward compatibility constants
-    SERVER_STATUS_REQ,
-    VALIDATE_WAYPOINT_REQ,
-    VALIDATE_CHANGE_SPEED_REQ,
-    VALIDATE_TAKEOFF_REQ,
-    VALIDATE_LANDING_REQ,
-    # Backward compatibility functions
-    serialize_request,
-    serialize_response,
-    serialize_msg,
-    deserialize_msg,
-)
-
 import warnings
+
+# Re-export everything from safety.py for backward compatibility
+from .safety import (RequestType, SERVER_STATUS_REQ, SafetyCheckerClient, SafetyCheckerServer, SafetyConfig,
+                     VALIDATE_CHANGE_SPEED_REQ, VALIDATE_LANDING_REQ, VALIDATE_TAKEOFF_REQ, VALIDATE_WAYPOINT_REQ,
+                     ValidationResult, VehicleType, deserialize_msg, serialize_msg, serialize_request,
+                     serialize_response)  # Enums; Configuration; Result types; Client/Server; Backward compatibility constants; Backward compatibility functions
+
 
 def _warn_deprecated():
     warnings.warn(
@@ -77,7 +59,6 @@ __all__ = [
 # Main entry point for running as a module
 if __name__ == "__main__":
     from argparse import ArgumentParser
-    import asyncio
 
     parser = ArgumentParser(
         description="safetyChecker - Launch a safety checker server"

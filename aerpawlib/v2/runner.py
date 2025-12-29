@@ -10,29 +10,16 @@ attributes directly to functions, providing cleaner introspection and type safet
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import (
-    Callable,
-    ClassVar,
-    Dict,
-    List,
-    Optional,
-    Any,
-    TypeVar,
-    Awaitable,
-    Generic,
-    Type,
-    overload,
-)
+from typing import (Any, Awaitable, Callable, ClassVar, Dict, Generic, List, Optional, Type, TypeVar, overload)
 
-from .vehicle import Vehicle, Drone, Rover
+from .vehicle import Vehicle
+from .logging import get_logger, LogComponent
 
-
-# Configure logging
-logger = logging.getLogger(__name__)
+# Configure logging using the modular logging system
+logger = get_logger(LogComponent.RUNNER)
 
 # Re-export asyncio helpers for convenience
 sleep = asyncio.sleep

@@ -14,9 +14,12 @@ Usage:
     from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
 
     # All existing v1 code works unchanged
+
+@author: Julian Reder (quantumbagel) - MAVSDK adaptation
+@author: John Kesler (morzack) - some code from original aerpawlib
 """
 
-from ..external import *
+from .external import *
 from .aerpaw import *
 from .zmqutil import *
 from .safetyChecker import *

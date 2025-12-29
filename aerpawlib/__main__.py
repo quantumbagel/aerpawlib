@@ -10,31 +10,25 @@ example:
             --vehicle drone
 """
 
-from .aerpaw import AERPAW_Platform
-from .runner import BasicRunner, StateMachine, Runner, ZmqStateMachine
-from .vehicle import Drone, Rover, Vehicle, DummyVehicle
-from .zmqutil import run_zmq_proxy
+# Removed static imports so we can select API version at runtime
+# (the appropriate modules will be imported after parsing CLI args)
 
 import asyncio
 import importlib
 import inspect
+import sys
 import time
-
-async def _rtl_cleanup(vehicle: Vehicle):
-    await vehicle.goto_coordinates(vehicle._home_location)
-    if vehicle_type in [Drone]:
-        await vehicle.land()
+from argparse import ArgumentParser
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
-    import sys
-    
     proxy_mode = "--run-proxy" in sys.argv
 
     parser = ArgumentParser(description="aerpawlib - wrap and run aerpaw scripts")
     parser.add_argument("--script", help="experimenter script", required=not proxy_mode)
     parser.add_argument("--conn", help="connection string", required=not proxy_mode)
     parser.add_argument("--vehicle", help="vehicle type [generic, drone, rover, none]", required=not proxy_mode)
+    parser.add_argument("--api-version", help="which API version to use (v1 or v2)",
+                        choices=["v1", "v2"], default="v1")
     parser.add_argument("--skip-init", help="skip initialization", required=False,
             const=False, default=True, action="store_const", dest="initialize")
     parser.add_argument("--run-proxy", help="run zmq proxy", required=False,
@@ -49,9 +43,25 @@ if __name__ == "__main__":
             const=True, default=False, action="store_const", dest="no_stdout")
     args, unknown_args = parser.parse_known_args() # we'll pass other args to the script
 
+    # Dynamically import all symbols from the selected API version into global namespace
+    api_version = args.api_version
+    try:
+        api_module = importlib.import_module(f"aerpawlib.{api_version}")
+        # Import all public symbols from the API module into globals
+        if hasattr(api_module, '__all__'):
+            for name in api_module.__all__:
+                globals()[name] = getattr(api_module, name)
+        else:
+            # If no __all__ is defined, import all non-private symbols
+            for name in dir(api_module):
+                if not name.startswith('_'):
+                    globals()[name] = getattr(api_module, name)
+    except Exception as e:
+        raise Exception(f"Failed to import aerpawlib {api_version}: {e}")
+
     if args.run_zmq_proxy:
         # don't even bother running the script, just the proxy
-        run_zmq_proxy()
+        globals()['run_zmq_proxy']()
         exit()
 
     # import script and use reflection to get StateMachine
@@ -59,6 +69,11 @@ if __name__ == "__main__":
 
     runner = None
     flag_zmq_runner = False
+    Runner = globals()['Runner']
+    StateMachine = globals()['StateMachine']
+    BasicRunner = globals()['BasicRunner']
+    ZmqStateMachine = globals()['ZmqStateMachine']
+
     for _, val in inspect.getmembers(experimenter_script):
         if not inspect.isclass(val):
             continue
@@ -71,6 +86,12 @@ if __name__ == "__main__":
         if runner:
             raise Exception("You can only define one runner")
         runner = val()
+
+    Vehicle = globals()['Vehicle']
+    Drone = globals()['Drone']
+    Rover = globals()['Rover']
+    DummyVehicle = globals()['DummyVehicle']
+    AERPAW_Platform = globals()['AERPAW_Platform']
 
     vehicle_type = {
             "generic": Vehicle,
@@ -103,6 +124,11 @@ if __name__ == "__main__":
     asyncio.run(runner.run(vehicle))
     
     # rtl / land if not already done
+    async def _rtl_cleanup(vehicle):
+        await vehicle.goto_coordinates(vehicle._home_location)
+        if vehicle_type in [Drone]:
+            await vehicle.land()
+
     if vehicle_type in [Drone, Rover]:
         if vehicle.armed and args.rtl_at_end:
             AERPAW_Platform.log_to_oeo("[aerpawlib] Vehicle still armed after experiment! RTLing and LANDing automatically.")

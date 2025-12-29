@@ -10,7 +10,7 @@ import asyncio
 import logging
 import math
 import time
-from typing import Optional, List, Callable, Dict, Any
+from typing import Any, Callable, Dict, List, Optional
 
 try:
     from mavsdk import System
@@ -38,10 +38,8 @@ from .types import (
     Waypoint,
 )
 from .exceptions import (
-    AerpawlibError,
     ConnectionError as AerpawConnectionError,
     ConnectionTimeoutError,
-    HeartbeatLostError,
     ReconnectionError,
     CommandError,
     ArmError,
@@ -56,7 +54,6 @@ from .exceptions import (
     OffboardError as AerpawOffboardError,
     TimeoutError as AerpawTimeoutError,
     AbortError,
-    UserAbortError,
     NotArmableError,
     CommandCancelledError,
 )
@@ -65,21 +62,16 @@ from .exceptions import (
 from .safety import (
     SafetyLimits,
     SafetyMonitor,
-    SafetyViolationType,
-    SafetyCheckResult,
     PreflightCheckResult,
     validate_coordinate,
     validate_altitude,
     validate_speed,
-    validate_velocity,
     validate_timeout,
     validate_tolerance,
     clamp_speed,
-    clamp_velocity,
     run_preflight_checks,
     PreflightCheckError,
     ParameterValidationError,
-    GeofenceViolationError,
     validate_waypoint_with_checker,
     validate_speed_with_checker,
     validate_takeoff_with_checker,
@@ -91,8 +83,9 @@ _POLLING_DELAY = 0.01  # seconds
 _TELEMETRY_UPDATE_RATE = 10  # Hz
 _HEARTBEAT_TIMEOUT = 5.0  # seconds without heartbeat before considered disconnected
 
-# Module logger
-logger = logging.getLogger(__name__)
+# Module logger - use modular logging system
+from .logging import get_logger, LogComponent
+logger = get_logger(LogComponent.VEHICLE)
 
 
 # ============================================================================
@@ -2615,7 +2608,7 @@ class Drone(Vehicle):
                 north_offset = radius * math.cos(target_angle_rad)
                 east_offset = radius * math.sin(target_angle_rad)
                 target_pos = center + VectorNED(north_offset, east_offset, 0)
-                target_pos = Coordinate(target_pos.latitude, target_pos.longitude, self.altitude)
+                Coordinate(target_pos.latitude, target_pos.longitude, self.altitude)
 
                 # Calculate velocity to maintain orbit
                 tangent_angle = target_angle + (90 if clockwise else -90)

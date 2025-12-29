@@ -1,4 +1,3 @@
-import asyncio
 import zmq
 
 ZMQ_PROXY_IN_PORT = "5570"

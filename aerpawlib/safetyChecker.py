@@ -22,4 +22,4 @@ warnings.warn(
 )
 
 # Re-export everything from v1 for backward compatibility
-from aerpawlib.v1.safetyChecker import *
+from v1.safetyChecker import *

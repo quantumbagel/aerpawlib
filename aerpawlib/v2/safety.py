@@ -43,7 +43,7 @@ import zlib
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import List, Optional, Dict, Callable, Any, TYPE_CHECKING, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 
 import yaml
 
@@ -63,7 +63,7 @@ except ImportError:
         zmq = None
 
 if TYPE_CHECKING:
-    from .vehicle import Vehicle, Drone
+    from .vehicle import Vehicle
     from .types import Coordinate, VectorNED
 
 # Import geofence functions
@@ -84,7 +84,9 @@ from .exceptions import (
     PreflightCheckError,
 )
 
-logger = logging.getLogger(__name__)
+# Use modular logging system
+from .logging import get_logger, LogComponent
+logger = get_logger(LogComponent.SAFETY)
 
 
 # ============================================================================
@@ -789,15 +791,14 @@ class SafetyCheckerServer:
         }
         return _serialize_message(response)
 
-    def _handle_server_status(self, *params) -> Tuple[bool, str]:
+    def _handle_server_status(self) -> Tuple[bool, str]:
         """Handle server status request."""
         return (True, "")
 
     def _handle_validate_waypoint(
         self,
         current_json: str,
-        target_json: str,
-        *params
+        target_json: str
     ) -> Tuple[bool, str]:
         """Handle waypoint validation request."""
         current = Coordinate.from_json(current_json)
@@ -864,7 +865,7 @@ class SafetyCheckerServer:
 
         return (True, "")
 
-    def _handle_validate_speed(self, speed: float, *params) -> Tuple[bool, str]:
+    def _handle_validate_speed(self, speed: float) -> Tuple[bool, str]:
         """Handle speed validation request."""
         if speed > self._config.max_speed:
             return (
@@ -882,8 +883,7 @@ class SafetyCheckerServer:
         self,
         altitude: float,
         latitude: float,
-        longitude: float,
-        *params
+        longitude: float
     ) -> Tuple[bool, str]:
         """Handle takeoff validation request."""
         # Check altitude for copters
@@ -900,8 +900,7 @@ class SafetyCheckerServer:
     def _handle_validate_landing(
         self,
         latitude: float,
-        longitude: float,
-        *params
+        longitude: float
     ) -> Tuple[bool, str]:
         """Handle landing validation request."""
         if self._takeoff_location is None:
@@ -972,7 +971,7 @@ class SafetyCheckerServer:
                         "message": f"Invalid request: {e}"
                     })
                 except Exception as e:
-                    response = _serialize_message({
+                    _serialize_message({
                         "result": False,
                         "message": f"Server error: {e}"
                     })

@@ -8,14 +8,8 @@ Usage:
     python -m examples.v2.basic_example
 """
 import asyncio
-from aerpawlib.v2 import (
-    Drone,
-    Coordinate,
-    VectorNED,
-    BasicRunner,
-    entrypoint,
-    sleep,
-)
+
+from aerpawlib.v2 import (BasicRunner, Coordinate, Drone, entrypoint, sleep)
 
 
 class SimpleSquareMission(BasicRunner):
@@ -56,7 +50,6 @@ class SimpleSquareMission(BasicRunner):
         print(f"Starting position: {start}")
 
         # Define square corners (30m sides)
-        side_length = 30
         corners = [
             start,  # Start
             Coordinate(start.latitude + 0.00027, start.longitude, 10),  # ~30m north

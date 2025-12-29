@@ -1,13 +1,21 @@
+"""
+safetyChecker module
+Provides a safety checker server and client for validating vehicle commands
+Unchanged from legacy
+
+@author: John Kesler (morzack)
+"""
+
+import json
 import os
+import zlib
+from argparse import ArgumentParser
 from typing import Dict, Tuple
+
 import yaml
 import zmq
-import json
-import zlib
-import pickle
-from argparse import ArgumentParser
 
-from .util import doIntersect, inside, readGeofence, Coordinate
+from .util import Coordinate, doIntersect, inside, readGeofence
 
 # Request key names supported by the safety checker server and client
 SERVER_STATUS_REQ = "server_status_req"
@@ -121,8 +129,8 @@ class SafetyCheckerClient:
         return self.parseResponse(resp)
 
 
+# noinspection PyUnusedLocal
 class SafetyCheckerServer:
-
     # valid vehicle types
     VEHICLE_TYPES = ["rover", "copter"]
     # parameters required for all vehicle types
@@ -184,6 +192,7 @@ class SafetyCheckerServer:
             raw_msg = socket.recv()
             message = deserialize_msg(raw_msg)
             print(f"Received request: {message}")
+            # noinspection PyUnusedLocal
             try:
                 function_name = message["request_function"]
                 req_function = self.REQUEST_FUNCTIONS[function_name]
@@ -224,7 +233,7 @@ class SafetyCheckerServer:
                     )
 
     def validateWaypointCommand(
-        self, curLoc: Coordinate, nextLoc: Coordinate
+            self, curLoc: Coordinate, nextLoc: Coordinate
     ) -> Tuple[bool, str]:
         """
         Makes sure path from current location to next waypoint stays inside geofence and avoids no-go zones.
@@ -265,14 +274,14 @@ class SafetyCheckerServer:
         # Makes sure path between two points does not leave geofence
         for i in range(len(geofence) - 1):
             if doIntersect(
-                geofence[i]["lon"],
-                geofence[i]["lat"],
-                geofence[i + 1]["lon"],
-                geofence[i + 1]["lat"],
-                curLoc.lon,
-                curLoc.lat,
-                nextLoc.lon,
-                nextLoc.lat,
+                    geofence[i]["lon"],
+                    geofence[i]["lat"],
+                    geofence[i + 1]["lon"],
+                    geofence[i + 1]["lat"],
+                    curLoc.lon,
+                    curLoc.lat,
+                    nextLoc.lon,
+                    nextLoc.lat,
             ):
                 return (
                     False,
@@ -284,14 +293,14 @@ class SafetyCheckerServer:
         for zone in self.exclude_geofences:
             for i in range(len(zone) - 1):
                 if doIntersect(
-                    zone[i]["lon"],
-                    zone[i]["lat"],
-                    zone[i + 1]["lon"],
-                    zone[i + 1]["lat"],
-                    curLoc.lon,
-                    curLoc.lat,
-                    nextLoc.lon,
-                    nextLoc.lat,
+                        zone[i]["lon"],
+                        zone[i]["lat"],
+                        zone[i + 1]["lon"],
+                        zone[i + 1]["lat"],
+                        curLoc.lon,
+                        curLoc.lat,
+                        nextLoc.lon,
+                        nextLoc.lat,
                 ):
                     return (
                         False,
@@ -416,4 +425,3 @@ if __name__ == "__main__":
 
     # This call blocks
     server = SafetyCheckerServer(args.vehicle_config, server_port=args.port)
-

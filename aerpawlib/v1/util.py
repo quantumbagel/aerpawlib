@@ -3,11 +3,13 @@ Types and functions commonly used throughout the aerpawlib v1 framework.
 
 This version has been updated to remove DroneKit dependencies while
 maintaining API compatibility.
+
+@author: Julian Reder (quantumbagel)
 """
 import json
 import math
-import os
-from typing import Dict, List, Tuple
+from typing import List, Tuple
+
 from pykml import parser
 
 
@@ -177,9 +179,6 @@ class Coordinate:
         return bearing
 
     def __add__(self, o):
-        north = 0
-        east = 0
-        alt = 0
         if isinstance(o, VectorNED):
             north = o.north
             east = o.east

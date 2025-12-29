@@ -4,6 +4,8 @@ scripts.
 
 This is the MAVSDK-based implementation of the v1 API, maintaining full
 backward compatibility with the original DroneKit-based interface.
+
+@author: Julian Reder (quantumbagel)
 """
 import asyncio
 import math
@@ -96,7 +98,7 @@ class DummyVehicle:
     Vehicle class for things that don't need vehicles.
     """
 
-    def __init__(self, connection_string: str):
+    def __init__(self):
         pass
 
     def close(self):
@@ -535,6 +537,7 @@ class Vehicle:
         self._ready_to_move = lambda _: True
 
 
+# noinspection PyUnusedLocal
 class Drone(Vehicle):
     """
     Drone vehicle type. Implements all functionality that AERPAW's drones
@@ -568,6 +571,7 @@ class Drone(Vehicle):
             return
 
         # Use offboard mode to control yaw
+        # noinspection PyUnusedLocal
         try:
             await self._system.offboard.set_position_ned(
                 PositionNedYaw(0, 0, -self._position_alt, heading)
@@ -592,7 +596,7 @@ class Drone(Vehicle):
             # Fallback - just update internal heading
             pass
 
-    async def takeoff(self, target_alt: float, min_alt_tolerance: float = 0.95, wait_for_throttle: bool = False):
+    async def takeoff(self, target_alt: float, min_alt_tolerance: float = 0.95):
         """
         Make the drone take off to a specific altitude, and blocks until the
         drone has reached that altitude.
@@ -655,7 +659,7 @@ class Drone(Vehicle):
 
         self._ready_to_move = lambda self: False
 
-        heading = float('nan')
+        float('nan')
         if self._current_heading is not None:
             heading = self._current_heading
         else:

@@ -15,15 +15,8 @@ This is useful for complex missions where you want to:
 - Log progress during long-running operations
 """
 import asyncio
-from aerpawlib.v2 import (
-    Drone,
-    Coordinate,
-    VectorNED,
-    CommandHandle,
-    CommandStatus,
-    CommandCancelledError,
-    GotoTimeoutError,
-)
+
+from aerpawlib.v2 import (CommandCancelledError, Coordinate, Drone, GotoTimeoutError, VectorNED)
 
 
 async def basic_non_blocking_example():

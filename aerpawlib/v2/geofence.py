@@ -15,8 +15,9 @@ from pykml import parser
 
 from .types import Coordinate
 
-
-logger = logging.getLogger(__name__)
+# Use modular logging system
+from .logging import get_logger, LogComponent
+logger = get_logger(LogComponent.GEOFENCE)
 
 # Tolerance for floating point comparisons
 _FLOAT_TOLERANCE = 1e-10

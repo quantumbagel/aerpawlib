@@ -1,13 +1,13 @@
+import json
 import os
+import zlib
+from argparse import ArgumentParser
 from typing import Dict, Tuple
+
 import yaml
 import zmq
-import json
-import zlib
-import pickle
-from argparse import ArgumentParser
 
-from .util import doIntersect, inside, readGeofence, Coordinate
+from .util import Coordinate, doIntersect, inside, readGeofence
 
 # Request key names supported by the safety checker server and client
 SERVER_STATUS_REQ = "server_status_req"
@@ -121,6 +121,7 @@ class SafetyCheckerClient:
         return self.parseResponse(resp)
 
 
+# noinspection PyUnusedLocal
 class SafetyCheckerServer:
 
     # valid vehicle types
@@ -184,6 +185,7 @@ class SafetyCheckerServer:
             raw_msg = socket.recv()
             message = deserialize_msg(raw_msg)
             print(f"Received request: {message}")
+            # noinspection PyUnusedLocal
             try:
                 function_name = message["request_function"]
                 req_function = self.REQUEST_FUNCTIONS[function_name]

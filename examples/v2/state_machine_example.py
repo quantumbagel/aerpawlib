@@ -5,17 +5,8 @@ This example demonstrates how to use the StateMachine pattern for
 complex missions with multiple states and background tasks.
 """
 import asyncio
-from aerpawlib.v2 import (
-    Drone,
-    Coordinate,
-    StateMachine,
-    state,
-    timed_state,
-    background,
-    at_init,
-    read_waypoints_from_plan,
-    sleep,
-)
+
+from aerpawlib.v2 import (Coordinate, Drone, StateMachine, at_init, background, sleep, state, timed_state)
 
 
 class SurveyMission(StateMachine):
@@ -41,7 +32,7 @@ class SurveyMission(StateMachine):
         self.min_battery = 20.0  # Minimum battery percentage
 
     @at_init
-    async def load_mission(self, drone: Drone):
+    async def load_mission(self):
         """Load waypoints before the mission starts."""
         # In a real mission, you might load from a file:
         # self.waypoints = read_waypoints_from_plan("survey.plan")
@@ -177,8 +168,8 @@ class OrbitMission(StateMachine):
         angle = (elapsed * 10) % 360  # 10 degrees per second
 
         rad = math.radians(angle)
-        north = self.orbit_radius * math.cos(rad)
-        east = self.orbit_radius * math.sin(rad)
+        self.orbit_radius * math.cos(rad)
+        self.orbit_radius * math.sin(rad)
 
         # Set velocity to orbit
         from aerpawlib.v2 import VectorNED
