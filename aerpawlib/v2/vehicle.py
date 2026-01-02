@@ -1622,22 +1622,28 @@ class Vehicle:
             NotArmableError: If vehicle is not ready to arm and force=False
             ArmError: If arming command fails
         """
+        logger.debug(f"arm(force={force}) called")
         if self._armed:
+            logger.debug("Vehicle already armed")
             return True
 
         if not force and not self._is_armable:
+            logger.error("Vehicle is not armable - check GPS and pre-flight conditions")
             raise NotArmableError(
                 "Vehicle is not armable. Check GPS and other pre-flight conditions."
             )
 
         try:
+            logger.debug("Sending arm command...")
             await self._system.action.arm()
             # Wait for arm confirmation
             start = time.time()
             while not self._armed and time.time() - start < 10:
                 await asyncio.sleep(_POLLING_DELAY)
+            logger.debug(f"Arm result: {'success' if self._armed else 'failed'}")
             return self._armed
         except ActionError as e:
+            logger.error(f"Failed to arm: {e}")
             raise ArmError(f"Failed to arm: {e}", reason=str(e))
 
     async def disarm(self, force: bool = False) -> bool:
@@ -1653,11 +1659,14 @@ class Vehicle:
         Raises:
             DisarmError: If disarm command fails
         """
+        logger.debug(f"disarm(force={force}) called")
         if not self._armed:
+            logger.debug("Vehicle already disarmed")
             return True
 
         try:
             if force:
+                logger.warning("Force disarm (kill) requested!")
                 await self._system.action.kill()
             else:
                 await self._system.action.disarm()
@@ -1870,7 +1879,9 @@ class Drone(Vehicle):
                 print(f"Current altitude: {drone.altitude}m")
                 await asyncio.sleep(0.5)
         """
+        logger.debug(f"takeoff(altitude={altitude}, wait={wait}, timeout={timeout}) called")
         if not self._armed:
+            logger.debug("Vehicle not armed, arming first...")
             await self.arm()
 
         self._abortable = True
@@ -1878,6 +1889,7 @@ class Drone(Vehicle):
 
         # Validate takeoff against safety checker server
         if self._safety_checker is not None:
+            logger.debug("Validating takeoff with safety checker...")
             await validate_takeoff_with_checker(
                 self._safety_checker,
                 altitude,
@@ -1887,9 +1899,12 @@ class Drone(Vehicle):
             )
 
         try:
+            logger.debug(f"Setting takeoff altitude to {altitude}m")
             await self._system.action.set_takeoff_altitude(altitude)
+            logger.debug("Sending takeoff command...")
             await self._system.action.takeoff()
         except ActionError as e:
+            logger.error(f"Takeoff failed: {e}")
             raise TakeoffError(
                 f"Takeoff failed: {e}",
                 target_altitude=altitude,
@@ -1959,12 +1974,15 @@ class Drone(Vehicle):
                 print(f"Altitude: {drone.altitude}m")
                 await asyncio.sleep(0.5)
         """
+        logger.debug(f"land(wait={wait}, timeout={timeout}) called")
         self._abortable = False
         self._velocity_loop_active = False
 
         try:
+            logger.debug("Sending land command...")
             await self._system.action.land()
         except ActionError as e:
+            logger.error(f"Landing failed: {e}")
             raise LandingError(
                 f"Landing failed: {e}",
                 current_altitude=self.state.relative_altitude,
@@ -2145,6 +2163,7 @@ class Drone(Vehicle):
             # ... do other things ...
             await handle  # Wait for completion
         """
+        logger.debug(f"goto(lat={latitude}, lon={longitude}, alt={altitude}, coords={coordinates}, tolerance={tolerance}, speed={speed}, heading={heading}, wait={wait}) called")
         # Build target coordinate
         if coordinates is not None:
             target = coordinates
@@ -2215,13 +2234,16 @@ class Drone(Vehicle):
             self._current_heading = self.position.bearing_to(target)
 
         try:
+            target_alt = target.altitude + (self._home.altitude if self._home else 0)
+            logger.debug(f"Navigating to: lat={target.latitude}, lon={target.longitude}, alt={target_alt}, heading={self._current_heading or 0}")
             await self._system.action.goto_location(
                 target.latitude,
                 target.longitude,
-                target.altitude + (self._home.altitude if self._home else 0),
+                target_alt,
                 self._current_heading or 0
             )
         except ActionError as e:
+            logger.error(f"Goto failed: {e}")
             raise NavigationError(
                 f"Goto failed: {e}",
                 target=target,
@@ -2439,12 +2461,14 @@ class Drone(Vehicle):
                 print(f"Time remaining: {handle.time_remaining}s")
                 await asyncio.sleep(1)
         """
+        logger.debug(f"set_velocity(N={velocity.north}, E={velocity.east}, D={velocity.down}, heading={heading}, duration={duration}, wait={wait}) called")
         if heading is not None:
             self._current_heading = heading
 
         target_yaw = self._current_heading or self.state.heading
 
         try:
+            logger.debug(f"Setting velocity NED: N={velocity.north}, E={velocity.east}, D={velocity.down}, yaw={target_yaw}")
             await self._system.offboard.set_velocity_ned(
                 VelocityNedYaw(
                     velocity.north,

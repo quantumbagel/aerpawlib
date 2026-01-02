@@ -8,6 +8,7 @@ backward compatibility with the original DroneKit-based interface.
 @author: Julian Reder (quantumbagel)
 """
 import asyncio
+import logging
 import math
 import time
 import threading
@@ -30,6 +31,9 @@ except ImportError:
 
 from . import util
 from .aerpaw import AERPAW_Platform
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 # time to wait when polling for vehicle state changes
 _POLLING_DELAY = 0.01  # s
@@ -451,19 +455,25 @@ class Vehicle:
         """
         Arm or disarm this vehicle, and wait for it to be armed (if possible).
         """
+        logger.debug(f"set_armed({value}) called")
         if not self._is_armable_state and value:
+            logger.error("Cannot arm: vehicle not in armable state")
             raise Exception("Not ready to arm")
 
         try:
             if value:
+                logger.debug("Sending arm command...")
                 await self._system.action.arm()
             else:
+                logger.debug("Sending disarm command...")
                 await self._system.action.disarm()
 
             # Wait for arm state to match
             while self._armed_state != value:
                 await asyncio.sleep(_POLLING_DELAY)
+            logger.debug(f"Vehicle {'armed' if value else 'disarmed'} successfully")
         except ActionError as e:
+            logger.error(f"Arm/disarm failed: {e}")
             raise Exception(f"Arm/disarm failed: {e}")
 
     def _initialize_prearm(self, should_postarm_init):
@@ -525,9 +535,12 @@ class Vehicle:
         """
         Set a vehicle's cruise velocity as used by the autopilot.
         """
+        logger.debug(f"set_groundspeed({velocity}) called")
         try:
             await self._system.action.set_maximum_speed(velocity)
+            logger.debug(f"Maximum speed set to {velocity} m/s")
         except ActionError:
+            logger.debug("set_maximum_speed not supported by autopilot")
             pass  # Not all autopilots support this
 
     async def _stop(self):
@@ -557,10 +570,12 @@ class Drone(Vehicle):
         Pass in `None` to make the drone return to ardupilot's default heading
         behavior (usually facing the direction of movement)
         """
+        logger.debug(f"set_heading(heading={heading}, blocking={blocking}, lock_in={lock_in}) called")
         if blocking:
             await self.await_ready_to_move()
 
         if heading is None:
+            logger.debug("Clearing locked heading, returning to default behavior")
             self._current_heading = None
             return
 
@@ -570,6 +585,7 @@ class Drone(Vehicle):
         if not blocking:
             return
 
+        logger.debug(f"Turning to heading {heading}° (current: {self.heading}°)")
         # Use offboard mode to control yaw
         # noinspection PyUnusedLocal
         try:
@@ -601,6 +617,7 @@ class Drone(Vehicle):
         Make the drone take off to a specific altitude, and blocks until the
         drone has reached that altitude.
         """
+        logger.debug(f"takeoff(target_alt={target_alt}, min_alt_tolerance={min_alt_tolerance}) called")
         await self.await_ready_to_move()
 
         # wait_for_throttle is ignored in MAVSDK implementation
@@ -610,17 +627,23 @@ class Drone(Vehicle):
             self._mission_start_time = time.time()
 
         try:
+            logger.debug(f"Setting takeoff altitude to {target_alt}m")
             await self._system.action.set_takeoff_altitude(target_alt)
+            logger.debug("Sending takeoff command...")
             await self._system.action.takeoff()
 
             taken_off = lambda self: self.position.alt >= target_alt * min_alt_tolerance
             self._ready_to_move = taken_off
 
+            logger.debug(f"Waiting to reach altitude {target_alt * min_alt_tolerance}m...")
             while not taken_off(self):
                 await asyncio.sleep(_POLLING_DELAY)
 
+            logger.debug(f"Reached target altitude, current alt: {self.position.alt}m")
             await asyncio.sleep(5)
+            logger.debug("Takeoff complete")
         except ActionError as e:
+            logger.error(f"Takeoff failed: {e}")
             raise Exception(f"Takeoff failed: {e}")
 
     async def land(self):
@@ -628,18 +651,23 @@ class Drone(Vehicle):
         Land the drone at its current position and block while waiting for it
         to be disarmed.
         """
+        logger.debug("land() called")
         await self.await_ready_to_move()
 
         self._abortable = False
 
         try:
+            logger.debug("Sending land command...")
             await self._system.action.land()
 
             self._ready_to_move = lambda _: False
 
+            logger.debug("Waiting for vehicle to disarm...")
             while self.armed:
                 await asyncio.sleep(_POLLING_DELAY)
+            logger.debug("Landing complete, vehicle disarmed")
         except ActionError as e:
+            logger.error(f"Land failed: {e}")
             raise Exception(f"Land failed: {e}")
 
     async def goto_coordinates(
@@ -651,6 +679,7 @@ class Drone(Vehicle):
         """
         Make the vehicle go to provided coordinates.
         """
+        logger.debug(f"goto_coordinates(lat={coordinates.lat}, lon={coordinates.lon}, alt={coordinates.alt}, tolerance={tolerance}, heading={target_heading}) called")
         if target_heading is not None:
             await self.set_heading(target_heading)
 
@@ -668,19 +697,24 @@ class Drone(Vehicle):
 
         try:
             # Use goto_location action
+            target_alt = coordinates.alt + (self._home_location.alt if self._home_location else 0)
+            logger.debug(f"Navigating to: lat={coordinates.lat}, lon={coordinates.lon}, alt={target_alt}, heading={heading}")
             await self._system.action.goto_location(
                 coordinates.lat,
                 coordinates.lon,
-                coordinates.alt + (self._home_location.alt if self._home_location else 0),
+                target_alt,
                 heading if not math.isnan(heading) else 0
             )
 
             at_coords = lambda self: coordinates.distance(self.position) <= tolerance
             self._ready_to_move = at_coords
 
+            logger.debug(f"Waiting to reach destination (tolerance={tolerance}m)...")
             while not at_coords(self):
                 await asyncio.sleep(_POLLING_DELAY)
+            logger.debug(f"Arrived at destination, distance: {coordinates.distance(self.position)}m")
         except ActionError as e:
+            logger.error(f"Goto failed: {e}")
             raise Exception(f"Goto failed: {e}")
 
     async def set_velocity(
@@ -692,6 +726,7 @@ class Drone(Vehicle):
         """
         Set a drone's velocity that it will use for `duration` seconds.
         """
+        logger.debug(f"set_velocity(N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, global_relative={global_relative}, duration={duration}) called")
         await self.await_ready_to_move()
 
         self._velocity_loop_active = False
@@ -699,10 +734,12 @@ class Drone(Vehicle):
 
         if not global_relative:
             velocity_vector = velocity_vector.rotate_by_angle(-self.heading)
+            logger.debug(f"Rotated velocity to global frame: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}")
 
         yaw = self._current_heading if self._current_heading is not None else self.heading
 
         try:
+            logger.debug(f"Setting velocity NED: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, yaw={yaw}")
             await self._system.offboard.set_velocity_ned(
                 VelocityNedYaw(
                     velocity_vector.north,
