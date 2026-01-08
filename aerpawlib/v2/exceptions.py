@@ -1,65 +1,99 @@
 """
 Exception hierarchy for aerpawlib v2 API.
 
-This module provides a structured set of exceptions for granular error handling
-in vehicle control scripts. All exceptions inherit from AerpawlibError.
-
-Example:
-    from aerpawlib.v2 import (
-        Drone,
-        ConnectionError,
-        CommandError,
-        TimeoutError,
-        AbortError,
-    )
-
-    try:
-        await drone.connect()
-        await drone.takeoff(altitude=10)
-    except ConnectionError as e:
-        print(f"Failed to connect: {e}")
-    except TimeoutError as e:
-        print(f"Operation timed out: {e}")
-    except CommandError as e:
-        print(f"Command failed: {e}")
+Simplified exception structure using a few base classes with error codes,
+instead of 30+ individual exception classes.
 """
 from __future__ import annotations
 
-from typing import Optional, Any, Dict
 from enum import Enum, auto
+from typing import Any, Dict, Optional
+
+
+class ErrorCode(Enum):
+    """Error codes for categorizing exceptions."""
+    # Connection errors (1xx)
+    CONNECTION_FAILED = 100
+    CONNECTION_TIMEOUT = 101
+    HEARTBEAT_LOST = 102
+    RECONNECTION_FAILED = 103
+
+    # Command errors (2xx)
+    COMMAND_FAILED = 200
+    ARM_FAILED = 201
+    DISARM_FAILED = 202
+    TAKEOFF_FAILED = 203
+    LANDING_FAILED = 204
+    NAVIGATION_FAILED = 205
+    MODE_CHANGE_FAILED = 206
+    OFFBOARD_FAILED = 207
+
+    # Timeout errors (3xx)
+    OPERATION_TIMEOUT = 300
+    GOTO_TIMEOUT = 301
+    TAKEOFF_TIMEOUT = 302
+    LANDING_TIMEOUT = 303
+
+    # Abort errors (4xx)
+    OPERATION_ABORTED = 400
+    USER_ABORT = 401
+    COMMAND_CANCELLED = 402
+    SAFETY_ABORT = 403
+
+    # Safety errors (5xx)
+    SAFETY_VIOLATION = 500
+    GEOFENCE_VIOLATION = 501
+    ALTITUDE_VIOLATION = 502
+    SPEED_VIOLATION = 503
+    PARAMETER_INVALID = 504
+
+    # Preflight errors (6xx)
+    PREFLIGHT_FAILED = 600
+    GPS_NOT_READY = 601
+    BATTERY_LOW = 602
+    NOT_ARMABLE = 603
+
+    # State machine errors (7xx)
+    STATE_MACHINE_ERROR = 700
+    INVALID_STATE = 701
+    NO_INITIAL_STATE = 702
+    MULTIPLE_INITIAL_STATES = 703
 
 
 class ErrorSeverity(Enum):
     """Severity level of an error."""
-    WARNING = auto()      # Recoverable, operation may continue
-    ERROR = auto()        # Operation failed, but vehicle is safe
-    CRITICAL = auto()     # Immediate action required
-    FATAL = auto()        # Unrecoverable, mission should abort
+    WARNING = auto()
+    ERROR = auto()
+    CRITICAL = auto()
+    FATAL = auto()
 
 
 class AerpawlibError(Exception):
     """
     Base exception for all aerpawlib errors.
 
-    Attributes:
-        message: Human-readable error description
-        severity: Error severity level
-        details: Optional dictionary with additional context
-        recoverable: Whether the error can be recovered from
+    All errors have:
+    - message: Human-readable description
+    - code: ErrorCode for programmatic handling
+    - severity: How serious the error is
+    - details: Additional context as key-value pairs
+    - recoverable: Whether the operation can be retried
     """
 
     def __init__(
         self,
         message: str,
+        code: ErrorCode = ErrorCode.COMMAND_FAILED,
         severity: ErrorSeverity = ErrorSeverity.ERROR,
-        details: Optional[Dict[str, Any]] = None,
         recoverable: bool = True,
+        **details: Any
     ):
-        super().__init__(message)
         self.message = message
+        self.code = code
         self.severity = severity
-        self.details = details or {}
         self.recoverable = recoverable
+        self.details: Dict[str, Any] = {k: v for k, v in details.items() if v is not None}
+        super().__init__(message)
 
     def __str__(self) -> str:
         base = f"[{self.severity.name}] {self.message}"
@@ -69,708 +103,467 @@ class AerpawlibError(Exception):
         return base
 
 
-# Connection Errors
+# Specific exception classes for common error categories
 
 class ConnectionError(AerpawlibError):
-    """Raised when vehicle connection fails or is lost."""
+    """Vehicle connection failed or lost."""
 
     def __init__(
         self,
-        message: str,
+        message: str = "Connection failed",
+        code: ErrorCode = ErrorCode.CONNECTION_FAILED,
         address: Optional[str] = None,
         timeout: Optional[float] = None,
         attempt: Optional[int] = None,
-        max_attempts: Optional[int] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if address:
-            details["address"] = address
-        if timeout is not None:
-            details["timeout"] = timeout
-        if attempt is not None:
-            details["attempt"] = attempt
-        if max_attempts is not None:
-            details["max_attempts"] = max_attempts
+        super().__init__(
+            message, code, ErrorSeverity.ERROR, True,
+            address=address, timeout=timeout, attempt=attempt, **details
+        )
 
-        super().__init__(message, details=details, **kwargs)
-        self.address = address
-        self.timeout = timeout
-        self.attempt = attempt
-        self.max_attempts = max_attempts
-
-
-class ConnectionTimeoutError(ConnectionError):
-    """Raised when connection attempt times out."""
-
-    def __init__(
-        self,
-        message: str = "Connection timed out",
-        timeout: float = 30.0,
-        **kwargs
-    ):
-        super().__init__(message, timeout=timeout, **kwargs)
-
-
-class HeartbeatLostError(ConnectionError):
-    """Raised when heartbeat is lost from the vehicle."""
-
-    def __init__(
-        self,
-        message: str = "Lost heartbeat from vehicle",
-        last_heartbeat: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if last_heartbeat is not None:
-            details["seconds_since_heartbeat"] = last_heartbeat
-
-        super().__init__(message, severity=ErrorSeverity.CRITICAL, details=details, **kwargs)
-        self.last_heartbeat = last_heartbeat
-
-
-class ReconnectionError(ConnectionError):
-    """Raised when automatic reconnection fails."""
-
-    def __init__(
-        self,
-        message: str = "Failed to reconnect to vehicle",
-        **kwargs
-    ):
-        super().__init__(message, recoverable=False, **kwargs)
-
-
-# Command Errors
 
 class CommandError(AerpawlibError):
-    """Raised when a vehicle command fails."""
+    """Vehicle command failed."""
 
     def __init__(
         self,
-        message: str,
+        message: str = "Command failed",
+        code: ErrorCode = ErrorCode.COMMAND_FAILED,
         command: Optional[str] = None,
         reason: Optional[str] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if command:
-            details["command"] = command
-        if reason:
-            details["reason"] = reason
-
-        super().__init__(message, details=details, **kwargs)
-        self.command = command
-        self.reason = reason
-
-
-class ArmError(CommandError):
-    """Raised when arming fails."""
-
-    def __init__(
-        self,
-        message: str = "Failed to arm vehicle",
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(message, command="arm", reason=reason, **kwargs)
-
-
-class DisarmError(CommandError):
-    """Raised when disarming fails."""
-
-    def __init__(
-        self,
-        message: str = "Failed to disarm vehicle",
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(message, command="disarm", reason=reason, **kwargs)
-
-
-class TakeoffError(CommandError):
-    """Raised when takeoff fails."""
-
-    def __init__(
-        self,
-        message: str = "Takeoff failed",
-        target_altitude: Optional[float] = None,
-        current_altitude: Optional[float] = None,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target_altitude is not None:
-            details["target_altitude"] = target_altitude
-        if current_altitude is not None:
-            details["current_altitude"] = current_altitude
-
-        super().__init__(message, command="takeoff", reason=reason, details=details, **kwargs)
-        self.target_altitude = target_altitude
-        self.current_altitude = current_altitude
-
-
-class LandingError(CommandError):
-    """Raised when landing fails."""
-
-    def __init__(
-        self,
-        message: str = "Landing failed",
-        current_altitude: Optional[float] = None,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if current_altitude is not None:
-            details["current_altitude"] = current_altitude
-
         super().__init__(
-            message,
-            command="land",
-            reason=reason,
-            severity=ErrorSeverity.CRITICAL,
-            details=details,
-            **kwargs
+            message, code, ErrorSeverity.ERROR, True,
+            command=command, reason=reason, **details
         )
-        self.current_altitude = current_altitude
 
-
-class NavigationError(CommandError):
-    """Raised when a navigation command fails (goto, move, etc.)."""
-
-    def __init__(
-        self,
-        message: str = "Navigation command failed",
-        target: Optional[Any] = None,
-        current_position: Optional[Any] = None,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target is not None:
-            details["target"] = str(target)
-        if current_position is not None:
-            details["current_position"] = str(current_position)
-
-        super().__init__(message, command="goto", reason=reason, details=details, **kwargs)
-        self.target = target
-        self.current_position = current_position
-
-
-class ModeChangeError(CommandError):
-    """Raised when changing flight mode fails."""
-
-    def __init__(
-        self,
-        message: str = "Failed to change flight mode",
-        target_mode: Optional[str] = None,
-        current_mode: Optional[str] = None,
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target_mode:
-            details["target_mode"] = target_mode
-        if current_mode:
-            details["current_mode"] = current_mode
-
-        super().__init__(message, command="set_mode", reason=reason, details=details, **kwargs)
-        self.target_mode = target_mode
-        self.current_mode = current_mode
-
-
-class OffboardError(CommandError):
-    """Raised when offboard mode operations fail."""
-
-    def __init__(
-        self,
-        message: str = "Offboard mode operation failed",
-        reason: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(message, command="offboard", reason=reason, **kwargs)
-
-
-# Timeout Errors
 
 class TimeoutError(AerpawlibError):
-    """Raised when an operation times out."""
+    """Operation timed out."""
 
     def __init__(
         self,
         message: str = "Operation timed out",
+        code: ErrorCode = ErrorCode.OPERATION_TIMEOUT,
         operation: Optional[str] = None,
         timeout: Optional[float] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if operation:
-            details["operation"] = operation
-        if timeout is not None:
-            details["timeout_seconds"] = timeout
-
-        super().__init__(message, details=details, **kwargs)
-        self.operation = operation
-        self.timeout = timeout
-
-
-class GotoTimeoutError(TimeoutError):
-    """Raised when goto operation times out."""
-
-    def __init__(
-        self,
-        message: str = "Goto operation timed out",
-        target: Optional[Any] = None,
-        distance_remaining: Optional[float] = None,
-        timeout: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target is not None:
-            details["target"] = str(target)
-        if distance_remaining is not None:
-            details["distance_remaining"] = distance_remaining
-
-        super().__init__(message, operation="goto", timeout=timeout, details=details, **kwargs)
-        self.target = target
-        self.distance_remaining = distance_remaining
-
-
-class TakeoffTimeoutError(TimeoutError):
-    """Raised when takeoff times out."""
-
-    def __init__(
-        self,
-        message: str = "Takeoff timed out",
-        target_altitude: Optional[float] = None,
-        current_altitude: Optional[float] = None,
-        timeout: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target_altitude is not None:
-            details["target_altitude"] = target_altitude
-        if current_altitude is not None:
-            details["current_altitude"] = current_altitude
-
-        super().__init__(message, operation="takeoff", timeout=timeout, details=details, **kwargs)
-        self.target_altitude = target_altitude
-        self.current_altitude = current_altitude
-
-
-class LandingTimeoutError(TimeoutError):
-    """Raised when landing times out."""
-
-    def __init__(
-        self,
-        message: str = "Landing timed out",
-        current_altitude: Optional[float] = None,
-        timeout: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if current_altitude is not None:
-            details["current_altitude"] = current_altitude
-
         super().__init__(
-            message,
-            operation="land",
-            timeout=timeout,
-            severity=ErrorSeverity.CRITICAL,
-            details=details,
-            **kwargs
+            message, code, ErrorSeverity.ERROR, True,
+            operation=operation, timeout=timeout, **details
         )
-        self.current_altitude = current_altitude
 
-
-# Abort Errors
 
 class AbortError(AerpawlibError):
-    """Raised when an operation is aborted."""
+    """Operation aborted."""
 
     def __init__(
         self,
         message: str = "Operation aborted",
+        code: ErrorCode = ErrorCode.OPERATION_ABORTED,
         operation: Optional[str] = None,
         reason: Optional[str] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if operation:
-            details["operation"] = operation
-        if reason:
-            details["reason"] = reason
-
-        super().__init__(message, details=details, recoverable=True, **kwargs)
-        self.operation = operation
-        self.reason = reason
-
-
-class UserAbortError(AbortError):
-    """Raised when user explicitly aborts an operation."""
-
-    def __init__(
-        self,
-        message: str = "User aborted operation",
-        **kwargs
-    ):
-        super().__init__(message, reason="user_request", **kwargs)
-
-
-class CommandCancelledError(AbortError):
-    """Raised when a command is explicitly cancelled via its handle."""
-
-    def __init__(
-        self,
-        message: str = "Command was cancelled",
-        command: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if command:
-            details["command"] = command
-
-        super().__init__(message, reason="cancelled", details=details, **kwargs)
-        self.command = command
-
-
-class SafetyAbortError(AbortError):
-    """Raised when safety system triggers an abort."""
-
-    def __init__(
-        self,
-        message: str = "Safety system triggered abort",
-        violation: Optional[str] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if violation:
-            details["violation"] = violation
-
         super().__init__(
-            message,
-            reason="safety_violation",
-            severity=ErrorSeverity.CRITICAL,
-            details=details,
-            **kwargs
+            message, code, ErrorSeverity.WARNING, True,
+            operation=operation, reason=reason, **details
         )
-        self.violation = violation
 
-
-# Safety Errors
 
 class SafetyError(AerpawlibError):
-    """Base class for safety-related errors."""
-
-    def __init__(self, message: str, violation: Optional[Any] = None, **kwargs):
-        super().__init__(message, severity=ErrorSeverity.WARNING, **kwargs)
-        self.violation = violation
-
-
-class GeofenceViolationError(SafetyError):
-    """Raised when a command would violate geofence constraints."""
+    """Safety-related error."""
 
     def __init__(
         self,
-        message: str = "Command would violate geofence",
-        violation: Optional[Any] = None,
-        current_position: Optional[Any] = None,
-        target_position: Optional[Any] = None,
-        geofence_name: Optional[str] = None,
-        **kwargs
+        message: str = "Safety violation",
+        code: ErrorCode = ErrorCode.SAFETY_VIOLATION,
+        violation: Optional[str] = None,
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if current_position is not None:
-            details["current_position"] = str(current_position)
-        if target_position is not None:
-            details["target_position"] = str(target_position)
-        if geofence_name:
-            details["geofence"] = geofence_name
+        super().__init__(
+            message, code, ErrorSeverity.WARNING, True,
+            violation=violation, **details
+        )
 
-        super().__init__(message, violation=violation, details=details, **kwargs)
-        self.current_position = current_position
-        self.target_position = target_position
-        self.geofence_name = geofence_name
-
-
-class AltitudeViolationError(SafetyError):
-    """Raised when a command would violate altitude constraints."""
-
-    def __init__(
-        self,
-        message: str = "Command would violate altitude limits",
-        target_altitude: Optional[float] = None,
-        min_altitude: Optional[float] = None,
-        max_altitude: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target_altitude is not None:
-            details["target_altitude"] = target_altitude
-        if min_altitude is not None:
-            details["min_altitude"] = min_altitude
-        if max_altitude is not None:
-            details["max_altitude"] = max_altitude
-
-        super().__init__(message, details=details, **kwargs)
-        self.target_altitude = target_altitude
-        self.min_altitude = min_altitude
-        self.max_altitude = max_altitude
-
-
-class SpeedViolationError(SafetyError):
-    """Raised when a command would violate speed constraints."""
-
-    def __init__(
-        self,
-        message: str = "Command would violate speed limits",
-        violation: Optional[Any] = None,
-        requested_speed: Optional[float] = None,
-        max_speed: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if requested_speed is not None:
-            details["requested_speed"] = requested_speed
-        if max_speed is not None:
-            details["max_speed"] = max_speed
-
-        super().__init__(message, violation=violation, details=details, **kwargs)
-        self.requested_speed = requested_speed
-        self.max_speed = max_speed
-
-
-class SpeedLimitExceededError(SafetyError):
-    """Raised when a speed limit would be exceeded."""
-
-    def __init__(
-        self,
-        message: str = "Speed limit exceeded",
-        violation: Optional[Any] = None,
-        value: Optional[float] = None,
-        limit: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if value is not None:
-            details["value"] = value
-        if limit is not None:
-            details["limit"] = limit
-
-        super().__init__(message, violation=violation, details=details, **kwargs)
-        self.value = value
-        self.limit = limit
-
-
-class ParameterValidationError(SafetyError):
-    """Raised when a command parameter is invalid."""
-
-    def __init__(
-        self,
-        message: str = "Invalid parameter",
-        violation: Optional[Any] = None,
-        parameter: Optional[str] = None,
-        value: Optional[Any] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if parameter is not None:
-            details["parameter"] = parameter
-        if value is not None:
-            details["value"] = str(value)
-
-        super().__init__(message, violation=violation, details=details, **kwargs)
-        self.parameter = parameter
-        self.value = value
-
-
-# Pre-flight Errors
 
 class PreflightError(AerpawlibError):
-    """Raised when pre-flight checks fail."""
+    """Pre-flight check failed."""
 
     def __init__(
         self,
         message: str = "Pre-flight check failed",
+        code: ErrorCode = ErrorCode.PREFLIGHT_FAILED,
         check_name: Optional[str] = None,
         reason: Optional[str] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if check_name:
-            details["check"] = check_name
-        if reason:
-            details["reason"] = reason
+        super().__init__(
+            message, code, ErrorSeverity.ERROR, True,
+            check_name=check_name, reason=reason, **details
+        )
 
-        super().__init__(message, details=details, **kwargs)
-        self.check_name = check_name
-        self.reason = reason
-
-
-class PreflightCheckError(PreflightError):
-    """Raised when pre-flight safety checks fail (from safety module)."""
-
-    def __init__(
-        self,
-        message: str = "Pre-flight checks failed",
-        result: Optional[Any] = None,
-        violation: Optional[Any] = None,
-        **kwargs
-    ):
-        # Extract failed checks from result if available
-        failed_checks = []
-        if result is not None and hasattr(result, 'failed_checks'):
-            failed_checks = result.failed_checks
-            if not message or message == "Pre-flight checks failed":
-                message = f"Pre-flight checks failed: {', '.join(failed_checks)}"
-
-        details = kwargs.pop("details", {})
-        if failed_checks:
-            details["failed_checks"] = failed_checks
-
-        super().__init__(message, details=details, **kwargs)
-        self.result = result
-        self.violation = violation
-
-
-class GPSError(PreflightError):
-    """Raised when GPS is not ready."""
-
-    def __init__(
-        self,
-        message: str = "GPS not ready",
-        satellites: Optional[int] = None,
-        fix_type: Optional[int] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if satellites is not None:
-            details["satellites"] = satellites
-        if fix_type is not None:
-            details["fix_type"] = fix_type
-
-        super().__init__(message, check_name="gps", details=details, **kwargs)
-        self.satellites = satellites
-        self.fix_type = fix_type
-
-
-class BatteryError(PreflightError):
-    """Raised when battery level is insufficient."""
-
-    def __init__(
-        self,
-        message: str = "Battery level too low",
-        percentage: Optional[float] = None,
-        minimum_required: Optional[float] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if percentage is not None:
-            details["percentage"] = percentage
-        if minimum_required is not None:
-            details["minimum_required"] = minimum_required
-
-        super().__init__(message, check_name="battery", details=details, **kwargs)
-        self.percentage = percentage
-        self.minimum_required = minimum_required
-
-
-class NotArmableError(PreflightError):
-    """Raised when vehicle is not ready to arm."""
-
-    def __init__(
-        self,
-        message: str = "Vehicle is not ready to arm",
-        reasons: Optional[list] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if reasons:
-            details["reasons"] = reasons
-
-        super().__init__(message, check_name="armable", details=details, **kwargs)
-        self.reasons = reasons or []
-
-
-# State Machine Errors
 
 class StateMachineError(AerpawlibError):
-    """Base class for state machine related errors."""
+    """State machine error."""
 
     def __init__(
         self,
-        message: str,
+        message: str = "State machine error",
+        code: ErrorCode = ErrorCode.STATE_MACHINE_ERROR,
         current_state: Optional[str] = None,
-        **kwargs
+        **details: Any
     ):
-        details = kwargs.pop("details", {})
-        if current_state:
-            details["current_state"] = current_state
-
-        super().__init__(message, details=details, **kwargs)
-        self.current_state = current_state
+        super().__init__(
+            message, code, ErrorSeverity.ERROR, True,
+            current_state=current_state, **details
+        )
 
 
-class InvalidStateError(StateMachineError):
-    """Raised when transitioning to an invalid state."""
+# Factory functions for specific error types (replacing 30+ individual classes)
 
-    def __init__(
-        self,
-        message: str = "Invalid state transition",
-        target_state: Optional[str] = None,
-        available_states: Optional[list] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if target_state:
-            details["target_state"] = target_state
-        if available_states:
-            details["available_states"] = available_states
-
-        super().__init__(message, details=details, **kwargs)
-        self.target_state = target_state
-        self.available_states = available_states or []
+def ConnectionTimeoutError(
+    timeout: float = 30.0,
+    address: Optional[str] = None,
+    attempt: Optional[int] = None,
+    max_attempts: Optional[int] = None
+) -> ConnectionError:
+    """Create a connection timeout error."""
+    return ConnectionError(
+        "Connection timed out",
+        ErrorCode.CONNECTION_TIMEOUT,
+        address=address,
+        timeout=timeout,
+        attempt=attempt,
+        max_attempts=max_attempts
+    )
 
 
-class NoInitialStateError(StateMachineError):
-    """Raised when no initial state is defined."""
-
-    def __init__(
-        self,
-        message: str = "No initial state defined",
-        **kwargs
-    ):
-        super().__init__(message, recoverable=False, **kwargs)
+def HeartbeatLostError(last_heartbeat: Optional[float] = None) -> ConnectionError:
+    """Create a heartbeat lost error."""
+    return ConnectionError(
+        "Lost heartbeat from vehicle",
+        ErrorCode.HEARTBEAT_LOST,
+        seconds_since_heartbeat=last_heartbeat
+    )
 
 
-class MultipleInitialStatesError(StateMachineError):
-    """Raised when multiple initial states are defined."""
+def ReconnectionError(
+    address: Optional[str] = None,
+    attempt: Optional[int] = None,
+    max_attempts: Optional[int] = None
+) -> ConnectionError:
+    """Create a reconnection failed error."""
+    err = ConnectionError(
+        "Failed to reconnect to vehicle",
+        ErrorCode.RECONNECTION_FAILED,
+        address=address,
+        attempt=attempt,
+        max_attempts=max_attempts
+    )
+    err.recoverable = False
+    return err
 
-    def __init__(
-        self,
-        message: str = "Multiple initial states defined",
-        states: Optional[list] = None,
-        **kwargs
-    ):
-        details = kwargs.pop("details", {})
-        if states:
-            details["initial_states"] = states
 
-        super().__init__(message, recoverable=False, details=details, **kwargs)
-        self.states = states or []
+def ArmError(message: str = "Failed to arm vehicle", reason: Optional[str] = None) -> CommandError:
+    """Create an arm failed error."""
+    return CommandError(message, ErrorCode.ARM_FAILED, command="arm", reason=reason)
 
 
-# Exports
+def DisarmError(message: str = "Failed to disarm vehicle", reason: Optional[str] = None) -> CommandError:
+    """Create a disarm failed error."""
+    return CommandError(message, ErrorCode.DISARM_FAILED, command="disarm", reason=reason)
+
+
+def TakeoffError(
+    message: str = "Takeoff failed",
+    target_altitude: Optional[float] = None,
+    current_altitude: Optional[float] = None,
+    reason: Optional[str] = None
+) -> CommandError:
+    """Create a takeoff failed error."""
+    return CommandError(
+        message, ErrorCode.TAKEOFF_FAILED, command="takeoff", reason=reason,
+        target_altitude=target_altitude, current_altitude=current_altitude
+    )
+
+
+def LandingError(
+    message: str = "Landing failed",
+    current_altitude: Optional[float] = None,
+    reason: Optional[str] = None
+) -> CommandError:
+    """Create a landing failed error."""
+    err = CommandError(
+        message, ErrorCode.LANDING_FAILED, command="land", reason=reason,
+        current_altitude=current_altitude
+    )
+    err.severity = ErrorSeverity.CRITICAL
+    return err
+
+
+def NavigationError(
+    message: str = "Navigation command failed",
+    target: Optional[Any] = None,
+    current_position: Optional[Any] = None,
+    reason: Optional[str] = None
+) -> CommandError:
+    """Create a navigation error."""
+    return CommandError(
+        message, ErrorCode.NAVIGATION_FAILED, command="goto", reason=reason,
+        target=str(target) if target else None,
+        current_position=str(current_position) if current_position else None
+    )
+
+
+def ModeChangeError(
+    message: str = "Failed to change flight mode",
+    target_mode: Optional[str] = None,
+    current_mode: Optional[str] = None,
+    reason: Optional[str] = None
+) -> CommandError:
+    """Create a mode change error."""
+    return CommandError(
+        message, ErrorCode.MODE_CHANGE_FAILED, command="set_mode", reason=reason,
+        target_mode=target_mode, current_mode=current_mode
+    )
+
+
+def OffboardError(message: str = "Offboard mode operation failed", reason: Optional[str] = None) -> CommandError:
+    """Create an offboard mode error."""
+    return CommandError(message, ErrorCode.OFFBOARD_FAILED, command="offboard", reason=reason)
+
+
+def GotoTimeoutError(
+    timeout: Optional[float] = None,
+    target: Optional[Any] = None,
+    distance_remaining: Optional[float] = None
+) -> TimeoutError:
+    """Create a goto timeout error."""
+    return TimeoutError(
+        "Goto operation timed out",
+        ErrorCode.GOTO_TIMEOUT,
+        operation="goto",
+        timeout=timeout,
+        target=str(target) if target else None,
+        distance_remaining=distance_remaining
+    )
+
+
+def TakeoffTimeoutError(
+    timeout: Optional[float] = None,
+    target_altitude: Optional[float] = None,
+    current_altitude: Optional[float] = None
+) -> TimeoutError:
+    """Create a takeoff timeout error."""
+    return TimeoutError(
+        "Takeoff timed out",
+        ErrorCode.TAKEOFF_TIMEOUT,
+        operation="takeoff",
+        timeout=timeout,
+        target_altitude=target_altitude,
+        current_altitude=current_altitude
+    )
+
+
+def LandingTimeoutError(
+    timeout: Optional[float] = None,
+    current_altitude: Optional[float] = None
+) -> TimeoutError:
+    """Create a landing timeout error."""
+    err = TimeoutError(
+        "Landing timed out",
+        ErrorCode.LANDING_TIMEOUT,
+        operation="land",
+        timeout=timeout,
+        current_altitude=current_altitude
+    )
+    err.severity = ErrorSeverity.CRITICAL
+    return err
+
+
+def UserAbortError(operation: Optional[str] = None) -> AbortError:
+    """Create a user abort error."""
+    return AbortError("User aborted operation", ErrorCode.USER_ABORT, operation=operation, reason="user_request")
+
+
+def CommandCancelledError(command: Optional[str] = None) -> AbortError:
+    """Create a command cancelled error."""
+    return AbortError(
+        f"Command was cancelled" + (f": {command}" if command else ""),
+        ErrorCode.COMMAND_CANCELLED,
+        reason="cancelled",
+        command=command
+    )
+
+
+def SafetyAbortError(violation: Optional[str] = None) -> AbortError:
+    """Create a safety abort error."""
+    err = AbortError(
+        "Safety system triggered abort",
+        ErrorCode.SAFETY_ABORT,
+        reason="safety_violation",
+        violation=violation
+    )
+    err.severity = ErrorSeverity.CRITICAL
+    return err
+
+
+def GeofenceViolationError(
+    message: str = "Command would violate geofence",
+    current_position: Optional[Any] = None,
+    target_position: Optional[Any] = None,
+    geofence_name: Optional[str] = None
+) -> SafetyError:
+    """Create a geofence violation error."""
+    return SafetyError(
+        message,
+        ErrorCode.GEOFENCE_VIOLATION,
+        current_position=str(current_position) if current_position else None,
+        target_position=str(target_position) if target_position else None,
+        geofence=geofence_name
+    )
+
+
+def AltitudeViolationError(
+    message: str = "Command would violate altitude limits",
+    target_altitude: Optional[float] = None,
+    min_altitude: Optional[float] = None,
+    max_altitude: Optional[float] = None
+) -> SafetyError:
+    """Create an altitude violation error."""
+    return SafetyError(
+        message,
+        ErrorCode.ALTITUDE_VIOLATION,
+        target_altitude=target_altitude,
+        min_altitude=min_altitude,
+        max_altitude=max_altitude
+    )
+
+
+def SpeedViolationError(
+    message: str = "Command would violate speed limits",
+    requested_speed: Optional[float] = None,
+    max_speed: Optional[float] = None
+) -> SafetyError:
+    """Create a speed violation error."""
+    return SafetyError(
+        message,
+        ErrorCode.SPEED_VIOLATION,
+        requested_speed=requested_speed,
+        max_speed=max_speed
+    )
+
+
+def SpeedLimitExceededError(
+    message: str = "Speed limit exceeded",
+    value: Optional[float] = None,
+    limit: Optional[float] = None
+) -> SafetyError:
+    """Create a speed limit exceeded error."""
+    return SafetyError(message, ErrorCode.SPEED_VIOLATION, value=value, limit=limit)
+
+
+def ParameterValidationError(
+    message: str = "Invalid parameter",
+    parameter: Optional[str] = None,
+    value: Optional[Any] = None
+) -> SafetyError:
+    """Create a parameter validation error."""
+    return SafetyError(
+        message,
+        ErrorCode.PARAMETER_INVALID,
+        parameter=parameter,
+        value=str(value) if value is not None else None
+    )
+
+
+def PreflightCheckError(
+    message: str = "Pre-flight checks failed",
+    result: Optional[Any] = None
+) -> PreflightError:
+    """Create a preflight check error."""
+    failed_checks = None
+    if result is not None and hasattr(result, 'failed_checks'):
+        failed_checks = result.failed_checks
+        if message == "Pre-flight checks failed" and failed_checks:
+            message = f"Pre-flight checks failed: {', '.join(failed_checks)}"
+    return PreflightError(message, ErrorCode.PREFLIGHT_FAILED, failed_checks=failed_checks)
+
+
+def GPSError(
+    message: str = "GPS not ready",
+    satellites: Optional[int] = None,
+    fix_type: Optional[int] = None
+) -> PreflightError:
+    """Create a GPS error."""
+    return PreflightError(message, ErrorCode.GPS_NOT_READY, check_name="gps", satellites=satellites, fix_type=fix_type)
+
+
+def BatteryError(
+    message: str = "Battery level too low",
+    percentage: Optional[float] = None,
+    minimum_required: Optional[float] = None
+) -> PreflightError:
+    """Create a battery error."""
+    return PreflightError(
+        message, ErrorCode.BATTERY_LOW, check_name="battery",
+        percentage=percentage, minimum_required=minimum_required
+    )
+
+
+def NotArmableError(message: str = "Vehicle is not ready to arm", reasons: Optional[list] = None) -> PreflightError:
+    """Create a not armable error."""
+    return PreflightError(message, ErrorCode.NOT_ARMABLE, check_name="armable", reasons=reasons)
+
+
+def InvalidStateError(
+    message: str = "Invalid state transition",
+    current_state: Optional[str] = None,
+    target_state: Optional[str] = None,
+    available_states: Optional[list] = None
+) -> StateMachineError:
+    """Create an invalid state error."""
+    return StateMachineError(
+        message, ErrorCode.INVALID_STATE, current_state=current_state,
+        target_state=target_state, available_states=available_states
+    )
+
+
+def NoInitialStateError() -> StateMachineError:
+    """Create a no initial state error."""
+    err = StateMachineError("No initial state defined", ErrorCode.NO_INITIAL_STATE)
+    err.recoverable = False
+    return err
+
+
+def MultipleInitialStatesError(states: Optional[list] = None) -> StateMachineError:
+    """Create a multiple initial states error."""
+    err = StateMachineError("Multiple initial states defined", ErrorCode.MULTIPLE_INITIAL_STATES, initial_states=states)
+    err.recoverable = False
+    return err
+
+
 __all__ = [
-    # Base
-    "AerpawlibError",
+    # Enums
+    "ErrorCode",
     "ErrorSeverity",
-    # Connection
+    # Base classes
+    "AerpawlibError",
     "ConnectionError",
+    "CommandError",
+    "TimeoutError",
+    "AbortError",
+    "SafetyError",
+    "PreflightError",
+    "StateMachineError",
+    # Factory functions (for backwards compatibility with old class names)
     "ConnectionTimeoutError",
     "HeartbeatLostError",
     "ReconnectionError",
-    # Command
-    "CommandError",
     "ArmError",
     "DisarmError",
     "TakeoffError",
@@ -778,31 +571,21 @@ __all__ = [
     "NavigationError",
     "ModeChangeError",
     "OffboardError",
-    # Timeout
-    "TimeoutError",
     "GotoTimeoutError",
     "TakeoffTimeoutError",
     "LandingTimeoutError",
-    # Abort
-    "AbortError",
     "UserAbortError",
     "CommandCancelledError",
     "SafetyAbortError",
-    # Safety
-    "SafetyError",
     "GeofenceViolationError",
     "AltitudeViolationError",
     "SpeedViolationError",
     "SpeedLimitExceededError",
     "ParameterValidationError",
-    # Pre-flight
-    "PreflightError",
     "PreflightCheckError",
     "GPSError",
     "BatteryError",
     "NotArmableError",
-    # State Machine
-    "StateMachineError",
     "InvalidStateError",
     "NoInitialStateError",
     "MultipleInitialStatesError",

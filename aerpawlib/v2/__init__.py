@@ -1,393 +1,187 @@
 """
-aerpawlib v2 API - MAVSDK-based vehicle control
+aerpawlib v2 API - MAVSDK-based vehicle control.
 
-This module provides a modern, Pythonic API for vehicle control using MAVSDK.
+This module uses lazy imports to reduce startup time and coupling.
+Import only what you need, or use the top-level imports for convenience.
+
+Example:
+    # Import what you need
+    from aerpawlib.v2 import Drone, Coordinate
+
+    # Or import everything (lazy-loaded)
+    from aerpawlib.v2 import *
 """
+from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+# These are always immediately available (lightweight)
 from .types import (
-    # Core types
-    Coordinate,
-    VectorNED,
-    PositionNED,
-    Attitude,
-    Waypoint,
-    # State containers (for type hints)
-    DroneState,
-    GPSInfo,
-    BatteryInfo,
-    DroneInfo,
-    FlightInfo,
-    # Enums
-    FlightMode,
-    LandedState,
-    # Utility functions
-    read_waypoints_from_plan,
+    Coordinate, VectorNED, PositionNED, Attitude, Waypoint,
+    DroneState, GPSInfo, BatteryInfo, DroneInfo, FlightInfo,
+    FlightMode, LandedState, read_waypoints_from_plan,
 )
 
-from .vehicle import (
-    Vehicle,
-    Drone,
-    Rover,
-    # Command tracking
-    CommandHandle,
-    CommandStatus,
-    CommandResult,
-)
-
-# Safety features (all consolidated in safety.py)
-from .safety import (
-    # Enums
-    SafetyViolationType,
-    RequestType,
-    VehicleType,
-    # Configuration
-    SafetyLimits,
-    SafetyConfig,
-    # Result types
-    ValidationResult,
-    SafetyCheckResult,
-    PreflightCheckResult,
-    # Client/Server
-    SafetyCheckerClient,
-    SafetyCheckerServer,
-    # Monitoring
-    SafetyMonitor,
-    # Validation functions
-    validate_coordinate,
-    validate_altitude,
-    validate_speed,
-    validate_velocity,
-    validate_timeout,
-    validate_tolerance,
-    # Server validation functions
-    validate_waypoint_with_checker,
-    validate_speed_with_checker,
-    validate_takeoff_with_checker,
-    # Clamping functions
-    clamp_speed,
-    clamp_velocity,
-    # Pre-flight checks
-    run_preflight_checks,
-    # Exceptions
-    SafetyError,
-    PreflightCheckError,
-    ParameterValidationError,
-    SpeedLimitExceededError,
-    GeofenceViolationError,
-)
-
-from .runner import (
-    # Runners
-    Runner,
-    BasicRunner,
-    StateMachine,
-    # Decorators
-    entrypoint,
-    state,
-    timed_state,
-    background,
-    at_init,
-    # Async helpers
-    sleep,
-    in_background,
-)
-
-from .aerpaw import (
-    # Main classes
-    AERPAWPlatform,
-    # Config
-    AERPAWConfig,
-    # Enums
-    MessageSeverity,
-    # Exceptions
-    AERPAWConnectionError,
-    AERPAWCheckpointError,
-)
-
-from .zmqutil import (
-    # Main classes
-    ZMQPublisher,
-    ZMQSubscriber,
-    ZMQMessage,
-    ZMQProxyConfig,
-    # Enums
-    MessageType,
-    # Functions
-    run_zmq_proxy,
-)
-
-# Note: safety_checker.py has been removed (was just a backward compatibility re-export wrapper)
-# All safety features are consolidated in safety.py
-
-from .geofence import (
-    # Main classes
-    GeofencePoint,
-    Polygon,
-    # Functions
-    read_geofence,
-    is_inside_polygon,
-    segments_intersect,
-    path_crosses_polygon,
-)
-
-from .exceptions import (
-    # Base
-    AerpawlibError,
-    ErrorSeverity,
-    # Connection
-    ConnectionError,
-    ConnectionTimeoutError,
-    HeartbeatLostError,
-    ReconnectionError,
-    # Command
-    CommandError,
-    ArmError,
-    DisarmError,
-    TakeoffError,
-    LandingError,
-    NavigationError,
-    ModeChangeError,
-    OffboardError,
-    # Timeout
-    TimeoutError,
-    GotoTimeoutError,
-    TakeoffTimeoutError,
-    LandingTimeoutError,
-    # Abort
-    AbortError,
-    UserAbortError,
-    SafetyAbortError,
-    CommandCancelledError,
-    # Safety
-    SafetyError,
-    GeofenceViolationError,
-    AltitudeViolationError,
-    SpeedViolationError,
-    SpeedLimitExceededError,
-    ParameterValidationError,
-    # Pre-flight
-    PreflightError,
-    PreflightCheckError,
-    GPSError,
-    BatteryError,
-    NotArmableError,
-    # State Machine
-    StateMachineError,
-    InvalidStateError,
-    NoInitialStateError,
-    MultipleInitialStatesError,
-)
-
-from .testing import (
-    MockDrone,
-    MockRover,
-    MockState,
-    MockGPS,
-    MockBattery,
-)
-
-# Logging
-from .logging import (
-    # Enums
-    LogLevel,
-    LogComponent,
-    # Configuration
-    LoggingConfig,
-    LoggingManager,
-    # Formatters
-    ColoredFormatter,
-    JSONFormatter,
-    TelemetryFormatter,
-    # Handlers
-    TelemetryHandler,
-    AsyncFileHandler,
-    # Data structures
-    StructuredLogRecord,
-    TelemetryPoint,
-    FlightLogMetadata,
-    # Flight recording
-    FlightDataRecorder,
-    # Adapter
-    LoggerAdapter,
-    # Module functions
-    get_manager,
-    configure_logging,
-    get_logger,
-    set_level,
-    get_flight_recorder,
-    # Decorators
-    log_call,
-    log_timing,
-)
-
-
-__all__ = [
-    # Core types
-    "Coordinate",
-    "VectorNED",
-    "PositionNED",
-    "Attitude",
-    "Waypoint",
-    # State containers
-    "DroneState",
-    "GPSInfo",
-    "BatteryInfo",
-    "DroneInfo",
-    "FlightInfo",
-    # Enums
-    "FlightMode",
-    "LandedState",
+# Lazy import registry
+_lazy_imports = {
     # Vehicles
-    "Vehicle",
-    "Drone",
-    "Rover",
-    # Command Tracking
-    "CommandHandle",
-    "CommandStatus",
-    "CommandResult",
-    # Safety features (all from safety.py)
-    "SafetyViolationType",
-    "RequestType",
-    "VehicleType",
-    "SafetyLimits",
-    "SafetyConfig",
-    "ValidationResult",
-    "SafetyCheckResult",
-    "PreflightCheckResult",
-    "SafetyCheckerClient",
-    "SafetyCheckerServer",
-    "SafetyMonitor",
-    "validate_coordinate",
-    "validate_altitude",
-    "validate_speed",
-    "validate_velocity",
-    "validate_timeout",
-    "validate_tolerance",
-    "validate_waypoint_with_checker",
-    "validate_speed_with_checker",
-    "validate_takeoff_with_checker",
-    "clamp_speed",
-    "clamp_velocity",
-    "run_preflight_checks",
-    "SafetyError",
-    "PreflightCheckError",
-    "ParameterValidationError",
-    "SpeedLimitExceededError",
-    "GeofenceViolationError",
+    "Vehicle": ".vehicle",
+    "Drone": ".vehicle",
+    "Rover": ".vehicle",
+    "CommandHandle": ".vehicle",
+    "CommandStatus": ".vehicle",
+    "CommandResult": ".vehicle",
+
+    # Safety (subpackage)
+    "SafetyViolationType": ".safety",
+    "RequestType": ".safety",
+    "VehicleType": ".safety",
+    "SafetyLimits": ".safety",
+    "SafetyConfig": ".safety",
+    "ValidationResult": ".safety",
+    "SafetyCheckResult": ".safety",
+    "PreflightCheckResult": ".safety",
+    "SafetyCheckerClient": ".safety",
+    "SafetyCheckerServer": ".safety",
+    "SafetyMonitor": ".safety",
+    "validate_coordinate": ".safety",
+    "validate_altitude": ".safety",
+    "validate_speed": ".safety",
+    "validate_velocity": ".safety",
+    "validate_timeout": ".safety",
+    "validate_tolerance": ".safety",
+    "validate_waypoint_with_checker": ".safety",
+    "validate_speed_with_checker": ".safety",
+    "validate_takeoff_with_checker": ".safety",
+    "clamp_speed": ".safety",
+    "clamp_velocity": ".safety",
+    "run_preflight_checks": ".safety",
+
     # Runners
-    "Runner",
-    "BasicRunner",
-    "StateMachine",
-    # Decorators
-    "entrypoint",
-    "state",
-    "timed_state",
-    "background",
-    "at_init",
-    # Helpers
-    "sleep",
-    "in_background",
-    "read_waypoints_from_plan",
-    # AERPAW Platform
-    "AERPAWPlatform",
-    "AERPAWConfig",
-    "MessageSeverity",
-    "AERPAWConnectionError",
-    "AERPAWCheckpointError",
+    "Runner": ".runner",
+    "BasicRunner": ".runner",
+    "StateMachine": ".runner",
+    "entrypoint": ".runner",
+    "state": ".runner",
+    "timed_state": ".runner",
+    "background": ".runner",
+    "at_init": ".runner",
+    "sleep": ".runner",
+    "in_background": ".runner",
+
+    # Platform
+    "AERPAWPlatform": ".aerpaw",
+    "AERPAWConfig": ".aerpaw",
+    "MessageSeverity": ".aerpaw",
+    "AERPAWConnectionError": ".aerpaw",
+    "AERPAWCheckpointError": ".aerpaw",
+
     # ZMQ
-    "ZMQPublisher",
-    "ZMQSubscriber",
-    "ZMQMessage",
-    "ZMQProxyConfig",
-    "MessageType",
-    "run_zmq_proxy",
+    "ZMQPublisher": ".zmqutil",
+    "ZMQSubscriber": ".zmqutil",
+    "ZMQMessage": ".zmqutil",
+    "ZMQProxyConfig": ".zmqutil",
+    "MessageType": ".zmqutil",
+    "run_zmq_proxy": ".zmqutil",
+
     # Geofence
-    "GeofencePoint",
-    "Polygon",
-    "read_geofence",
-    "is_inside_polygon",
-    "segments_intersect",
-    "path_crosses_polygon",
-    # Exceptions - Base
-    "AerpawlibError",
-    "ErrorSeverity",
-    # Exceptions - Connection
-    "ConnectionError",
-    "ConnectionTimeoutError",
-    "HeartbeatLostError",
-    "ReconnectionError",
-    # Exceptions - Command
-    "CommandError",
-    "ArmError",
-    "DisarmError",
-    "TakeoffError",
-    "LandingError",
-    "NavigationError",
-    "ModeChangeError",
-    "OffboardError",
-    # Exceptions - Timeout
-    "TimeoutError",
-    "GotoTimeoutError",
-    "TakeoffTimeoutError",
-    "LandingTimeoutError",
-    # Exceptions - Abort
-    "AbortError",
-    "UserAbortError",
-    "SafetyAbortError",
-    "CommandCancelledError",
-    # Exceptions - Safety
-    "SafetyError",
-    "GeofenceViolationError",
-    "AltitudeViolationError",
-    "SpeedViolationError",
-    "SpeedLimitExceededError",
-    "ParameterValidationError",
-    # Exceptions - Pre-flight
-    "PreflightError",
-    "PreflightCheckError",
-    "GPSError",
-    "BatteryError",
-    "NotArmableError",
-    # Exceptions - State Machine
-    "StateMachineError",
-    "InvalidStateError",
-    "NoInitialStateError",
-    "MultipleInitialStatesError",
+    "GeofencePoint": ".geofence",
+    "Polygon": ".geofence",
+    "read_geofence": ".geofence",
+    "is_inside_polygon": ".geofence",
+    "segments_intersect": ".geofence",
+    "path_crosses_polygon": ".geofence",
+
     # Testing
-    "MockDrone",
-    "MockRover",
-    "MockState",
-    "MockGPS",
-    "MockBattery",
-    # Logging - Enums
-    "LogLevel",
-    "LogComponent",
-    # Logging - Configuration
-    "LoggingConfig",
-    "LoggingManager",
-    # Logging - Formatters
-    "ColoredFormatter",
-    "JSONFormatter",
-    "TelemetryFormatter",
-    # Logging - Handlers
-    "TelemetryHandler",
-    "AsyncFileHandler",
-    # Logging - Data structures
-    "StructuredLogRecord",
-    "TelemetryPoint",
-    "FlightLogMetadata",
-    # Logging - Flight recording
-    "FlightDataRecorder",
-    # Logging - Adapter
-    "LoggerAdapter",
-    # Logging - Module functions
-    "get_manager",
-    "configure_logging",
-    "get_logger",
-    "set_level",
-    "get_flight_recorder",
-    # Logging - Decorators
-    "log_call",
-    "log_timing",
+    "MockDrone": ".testing",
+    "MockRover": ".testing",
+    "MockState": ".testing",
+    "MockGPS": ".testing",
+    "MockBattery": ".testing",
+
+    # Logging
+    "LogLevel": ".logging",
+    "LogComponent": ".logging",
+    "ColoredFormatter": ".logging",
+    "configure_logging": ".logging",
+    "get_logger": ".logging",
+    "set_level": ".logging",
+    "log_call": ".logging",
+    "log_timing": ".logging",
+
+    # Protocols
+    "VehicleProtocol": ".protocols",
+    "GPSProtocol": ".protocols",
+    "BatteryProtocol": ".protocols",
+    "StateProtocol": ".protocols",
+
+    # Exceptions
+    "AerpawlibError": ".exceptions",
+    "ErrorCode": ".exceptions",
+    "ErrorSeverity": ".exceptions",
+    "ConnectionError": ".exceptions",
+    "CommandError": ".exceptions",
+    "TimeoutError": ".exceptions",
+    "AbortError": ".exceptions",
+    "SafetyError": ".exceptions",
+    "PreflightError": ".exceptions",
+    "StateMachineError": ".exceptions",
+    "ConnectionTimeoutError": ".exceptions",
+    "HeartbeatLostError": ".exceptions",
+    "ReconnectionError": ".exceptions",
+    "ArmError": ".exceptions",
+    "DisarmError": ".exceptions",
+    "TakeoffError": ".exceptions",
+    "LandingError": ".exceptions",
+    "NavigationError": ".exceptions",
+    "ModeChangeError": ".exceptions",
+    "OffboardError": ".exceptions",
+    "GotoTimeoutError": ".exceptions",
+    "TakeoffTimeoutError": ".exceptions",
+    "LandingTimeoutError": ".exceptions",
+    "UserAbortError": ".exceptions",
+    "CommandCancelledError": ".exceptions",
+    "SafetyAbortError": ".exceptions",
+    "GeofenceViolationError": ".exceptions",
+    "AltitudeViolationError": ".exceptions",
+    "SpeedViolationError": ".exceptions",
+    "SpeedLimitExceededError": ".exceptions",
+    "ParameterValidationError": ".exceptions",
+    "PreflightCheckError": ".exceptions",
+    "GPSError": ".exceptions",
+    "BatteryError": ".exceptions",
+    "NotArmableError": ".exceptions",
+    "InvalidStateError": ".exceptions",
+    "NoInitialStateError": ".exceptions",
+    "MultipleInitialStatesError": ".exceptions",
+}
+
+
+def __getattr__(name: str):
+    """Lazy import handler."""
+    if name in _lazy_imports:
+        module_name = _lazy_imports[name]
+        import importlib
+        module = importlib.import_module(module_name, __package__)
+        value = getattr(module, name)
+        # Cache it for next time
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    """List available attributes for tab completion."""
+    return list(__all__)
+
+
+# Generate __all__ from lazy imports + eager imports
+__all__ = [
+    # Types (eager)
+    "Coordinate", "VectorNED", "PositionNED", "Attitude", "Waypoint",
+    "DroneState", "GPSInfo", "BatteryInfo", "DroneInfo", "FlightInfo",
+    "FlightMode", "LandedState", "read_waypoints_from_plan",
+    # Everything else (lazy)
+    *_lazy_imports.keys(),
 ]
 
