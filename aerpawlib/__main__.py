@@ -19,6 +19,7 @@ example:
 import asyncio
 import importlib
 import inspect
+import json
 import logging
 import os
 import signal
@@ -153,9 +154,52 @@ def main():
     os.chdir(project_root)
     sys.path.insert(0, os.getcwd())
 
-    proxy_mode = "--run-proxy" in sys.argv
+    # Pre-parse for config file
+    conf_parser = ArgumentParser(add_help=False)
+    conf_parser.add_argument("--config", help="path to JSON configuration file")
+    conf_args, _ = conf_parser.parse_known_args()
+
+    cli_args = sys.argv[1:]
+
+    # If config file is provided, load it and merge arguments
+    if conf_args.config:
+        if not os.path.exists(conf_args.config):
+            print(f"Config file not found: {conf_args.config}")
+            sys.exit(1)
+
+        try:
+            with open(conf_args.config, 'r') as f:
+                config_data = json.load(f)
+
+            config_cli_args = []
+            for key, value in config_data.items():
+                if isinstance(value, bool):
+                    if value:
+                        config_cli_args.append(f"--{key}")
+                    # for store_false args, if user puts "skip-init": false in json,
+                    # it means they DON'T want to skip init (which is default).
+                    # So we don't add --skip-init flag.
+                    # if user puts "skip-init": true, we add --skip-init.
+                elif isinstance(value, list):
+                     for item in value:
+                         config_cli_args.append(f"--{key}")
+                         config_cli_args.append(str(item))
+                else:
+                    config_cli_args.append(f"--{key}")
+                    config_cli_args.append(str(value))
+
+            # Prepend config args to CLI args so CLI overrides config
+            cli_args = config_cli_args + cli_args
+
+        except Exception as e:
+            print(f"Error loading config file: {e}")
+            sys.exit(1)
+
+    proxy_mode = "--run-proxy" in cli_args
 
     parser = ArgumentParser(description="aerpawlib - wrap and run aerpaw scripts")
+    parser.add_argument("--config", help="path to JSON configuration file. Keys are other arguments."
+                                         "Providing arguments to aerpawlib will override the config file.")
 
     # Core Arguments
     core_grp = parser.add_argument_group("Core Arguments")
@@ -199,7 +243,7 @@ def main():
                          type=float, default=5.0, dest="heartbeat_timeout")
 
 
-    args, unknown_args = parser.parse_known_args() # we'll pass other args to the script
+    args, unknown_args = parser.parse_known_args(args=cli_args) # we'll pass other args to the script
 
     # Initialize logging based on command line arguments
     global logger
@@ -216,14 +260,10 @@ def main():
     logger.debug(f"Python version: {sys.version}")
     logger.debug(f"Working directory: {os.getcwd()}")
     logger.debug(f"API version: {args.api_version}")
-    if args.script:
-        logger.debug(f"Script: {args.script}")
-    if args.vehicle:
-        logger.debug(f"Vehicle type: {args.vehicle}")
-    if args.conn:
-        logger.debug(f"Connection string: {args.conn}")
-    if unknown_args:
-        logger.debug(f"Additional arguments: {unknown_args}")
+    logger.debug(f"Script: {args.script}")
+    logger.debug(f"Vehicle type: {args.vehicle}")
+    logger.debug(f"Connection string: {args.conn}")
+    logger.debug(f"Additional arguments: {unknown_args}")
 
 
     # Dynamically import all symbols from the selected API version into global namespace
