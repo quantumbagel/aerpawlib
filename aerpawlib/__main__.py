@@ -197,7 +197,7 @@ def main():
 
     proxy_mode = "--run-proxy" in cli_args
 
-    parser = ArgumentParser(description="aerpawlib - wrap and run aerpaw scripts")
+    parser = ArgumentParser(description="aerpawlib - wrap and run aerpaw experimenter scripts")
     parser.add_argument("--config", help="path to JSON configuration file. Keys are other arguments."
                                          "Providing arguments to aerpawlib will override the config file.")
 

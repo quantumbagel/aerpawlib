@@ -17,6 +17,15 @@ import zmq
 import zmq.asyncio
 
 from .vehicle import Vehicle
+from .constants import STATE_MACHINE_DELAY_S
+from .zmqutil import ZMQ_PROXY_IN_PORT, ZMQ_PROXY_OUT_PORT, ZMQ_TYPE_TRANSITION, ZMQ_TYPE_FIELD_REQUEST, ZMQ_TYPE_FIELD_CALLBACK
+from .exceptions import (
+    NoEntrypointError,
+    InvalidStateError,
+    NoInitialStateError,
+    MultipleInitialStatesError,
+    InvalidStateNameError,
+)
 
 
 class Runner:
@@ -89,7 +98,7 @@ class BasicRunner(Runner):
         if hasattr(self, "_entry"):
             await self._entry.__func__(self, vehicle)
         else:
-            raise Exception("No @entrypoint declared")
+            raise NoEntrypointError()
 
 class _StateType(Enum):
     STANDARD = auto()
@@ -115,7 +124,7 @@ class _State:
                     last_state = await self._func.__func__(runner, vehicle)
                     if not self._func._state_loop:
                         running = False
-                    await asyncio.sleep(_STATE_DELAY)
+                    await asyncio.sleep(STATE_MACHINE_DELAY_S)
                 return last_state
             r = asyncio.ensure_future(_bg())
             # order here is important and stops a race condition
@@ -135,7 +144,7 @@ def state(name: str, first: bool=False):
     The function decorated by this is expected to be `async`
     """
     if name == "":
-        raise Exception("state name can't be \"\"")
+        raise InvalidStateNameError()
     def decorator(func):
         func._is_state = True
         func._state_name = name
@@ -168,7 +177,7 @@ def timed_state(name: str, duration: float, loop=False, first: bool=False):
 
 def expose_zmq(name: str):
     if name == "":
-        raise Exception("state must be exported with some binding")
+        raise InvalidStateNameError()
     def decorator(func):
         func._is_exposed_zmq = True
         func._zmq_name = name
@@ -181,7 +190,7 @@ def expose_field_zmq(name: str):
     by this will be called and the return value will be sent.
     """
     if name == "":
-        raise Exception("field must be exposed with some name")
+        raise InvalidStateNameError()
     def decorator(func):
         func._is_exposed_field_zmq = True
         func._zmq_name = name
@@ -222,7 +231,6 @@ def at_init(func):
     func._run_at_init = True
     return func
 
-_STATE_DELAY = 0.01 # s between each time the state update is called
 
 class StateMachine(Runner):
     """
@@ -258,13 +266,13 @@ class StateMachine(Runner):
                 if method._state_first and not hasattr(self, "_entrypoint"):
                     self._entrypoint = method._state_name
                 elif method._state_first and hasattr(self, "_entrypoint"):
-                    raise Exception("There may only be one initial state")
+                    raise MultipleInitialStatesError()
             if hasattr(method, "_is_background"):
                 self._background_tasks.append(method)
             if hasattr(method, "_run_at_init"):
                 self._initialization_tasks.append(method)
         if not self._entrypoint:
-            raise Exception("There is no initial state")
+            raise NoInitialStateError()
 
     async def _start_background_tasks(self, vehicle: Vehicle):
         for task in self._background_tasks:
@@ -290,9 +298,7 @@ class StateMachine(Runner):
 
         while self._running:
             if self._current_state not in self._states:
-                print(self._current_state)
-                print(self._states)
-                raise Exception("Illegal state")
+                raise InvalidStateError(self._current_state, list(self._states.keys()))
 
             next_state = await self._states[self._current_state].run(self, vehicle)
             if self._override_next_state_transition:
@@ -303,7 +309,7 @@ class StateMachine(Runner):
 
             if self._current_state is None:
                 self.stop()
-            await asyncio.sleep(_STATE_DELAY)
+            await asyncio.sleep(STATE_MACHINE_DELAY_S)
         self.cleanup()
 
     def stop(self):
@@ -391,7 +397,8 @@ class ZmqStateMachine(StateMachine):
         self._build()
 
         if None in [self._zmq_identifier, self._zmq_proxy_server]:
-            raise Exception("initialize_zmq_bindings must be used w/ a zmq runner")
+            from .exceptions import StateMachineError
+            raise StateMachineError("initialize_zmq_bindings must be used with a zmq runner")
 
         await super().run(vehicle, build_before_running=False)
 
