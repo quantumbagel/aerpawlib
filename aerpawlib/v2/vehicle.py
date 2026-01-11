@@ -453,7 +453,7 @@ class Vehicle:
                 await self._trigger_callbacks(VehicleEvent.CONNECT)
                 return True
 
-            except ConnectionTimeoutError as e:
+            except ConnectionError as e:
                 last_error = e
                 logger.warning(f"Connection attempt {attempt} timed out, retrying in {retry_delay}s...")
             except Exception as e:

@@ -10,7 +10,8 @@ A Python library for controlling vehicles within the AERPAW platform. This libra
 
 - Unified vehicle control interface
 - Telemetry logging and streaming
-- scriptable mission execution
+- Scriptable mission execution
+- Sandboxed vehicle control to prevent damage to vehicles
 - Designed to work with ArduPilot
 
 ## Installation
@@ -36,6 +37,8 @@ aerpawlib --help
 ```
 or any other commands.
 
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+

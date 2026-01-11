@@ -2,8 +2,6 @@
 
 The v1 API includes a safety checker system for geofence validation using ZMQ communication. It is functionally identical to the legacy safety checker but uses MAVSDK internally.
 
-> **Note**: For comprehensive safety features including pre-flight checks, battery failsafe, and parameter validation, consider upgrading to the [v2 API](../v2/safety.md).
-
 ## Overview
 
 The safety checker system consists of:
