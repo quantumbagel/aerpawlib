@@ -203,7 +203,7 @@ class CommandHandle:
 
     def _raise_if_error(self) -> "CommandHandle":
         if self._status == CommandStatus.CANCELLED:
-            raise CommandCancelledError(message=f"{self._command} was cancelled", command=self._command)
+            raise CommandCancelledError(command=self._command)
         if self._status == CommandStatus.TIMED_OUT and self._error:
             raise self._error
         if self._status == CommandStatus.FAILED and self._error:
@@ -486,7 +486,9 @@ class Vehicle:
         self._connected = False
         self._reconnect_attempts += 1
         if self._reconnect_attempts > self._max_reconnect_attempts:
-            raise ReconnectionError(address=self._connection_string, attempt=self._reconnect_attempts, max_attempts=self._max_reconnect_attempts)
+            raise ReconnectionError(address=self._connection_string,
+                                    attempt=self._reconnect_attempts,
+                                    max_attempts=self._max_reconnect_attempts)
 
         logger.info(f"Attempting reconnection ({self._reconnect_attempts}/{self._max_reconnect_attempts})...")
         for task in self._telemetry_tasks:
@@ -705,15 +707,6 @@ class Vehicle:
 
     def reset_abort(self) -> None:
         self._aborted = False
-
-    async def set_home(self, position: Optional[Coordinate] = None) -> bool:
-        position = position or self.position
-        try:
-            await self._system.action.set_current_home_position(position.latitude, position.longitude, position.altitude)
-            self._home = position
-            return True
-        except ActionError as e:
-            raise CommandError(message=f"Failed to set home position: {e}", command="set_home", reason=str(e))
 
     async def get_param(self, name: str) -> float:
         try:
