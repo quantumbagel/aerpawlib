@@ -3,6 +3,7 @@ Safety types for aerpawlib v2 API.
 
 Contains enums and result types for safety operations.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,10 +16,12 @@ if TYPE_CHECKING:
 
 class SafetyViolationType(Enum):
     """Types of safety limit violations."""
+
     SPEED_TOO_HIGH = auto()
     VERTICAL_SPEED_TOO_HIGH = auto()
     BATTERY_LOW = auto()
     BATTERY_CRITICAL = auto()
+    BATTERY_INSUFFICIENT_FOR_TAKEOFF = auto()
     GPS_POOR = auto()
     NO_GPS_FIX = auto()
     INVALID_COORDINATE = auto()
@@ -31,10 +34,34 @@ class SafetyViolationType(Enum):
     PATH_LEAVES_GEOFENCE = auto()
     PATH_ENTERS_NO_GO_ZONE = auto()
     ALTITUDE_OUT_OF_BOUNDS = auto()
+    # MAVLink filter related violations
+    COMMAND_BLOCKED = auto()
+    ILLEGAL_COMMAND = auto()
+    CONNECTION_SEVERED = auto()
+
+
+class DisconnectReason(Enum):
+    """
+    Reasons for connection disconnection.
+
+    These map to the two primary failure modes described in the AERPAW infrastructure:
+    - Hardware/USB failures
+    - MAVLink filter intervention (safety violation)
+    """
+
+    UNKNOWN = auto()
+    HEARTBEAT_LOST = auto()
+    HARDWARE_FAILURE = auto()  # Physical USB/autopilot failure
+    MAVLINK_FILTER_SEVERED = (
+        auto()
+    )  # MAVLink filter cut connection due to safety violation
+    USER_DISCONNECT = auto()  # Normal user-initiated disconnect
+    NETWORK_FAILURE = auto()  # Cellular/network link failure
 
 
 class RequestType(Enum):
     """Types of safety checker requests."""
+
     SERVER_STATUS = "server_status_req"
     VALIDATE_WAYPOINT = "validate_waypoint_req"
     VALIDATE_SPEED = "validate_change_speed_req"
@@ -44,6 +71,7 @@ class RequestType(Enum):
 
 class VehicleType(Enum):
     """Supported vehicle types."""
+
     ROVER = "rover"
     COPTER = "copter"
 
@@ -58,6 +86,7 @@ class ValidationResult:
         message: Error message if invalid, empty string if valid
         request_type: The type of request that was validated
     """
+
     valid: bool
     message: str = ""
     request_type: Optional[RequestType] = None
@@ -69,6 +98,7 @@ class ValidationResult:
 @dataclass
 class SafetyCheckResult:
     """Result of a client-side safety check."""
+
     passed: bool
     violation: Optional[SafetyViolationType] = None
     message: str = ""
@@ -92,10 +122,18 @@ class SafetyCheckResult:
         limit: Optional[float] = None,
     ) -> "SafetyCheckResult":
         """Create a failing result."""
-        return cls(passed=False, violation=violation, message=message, value=value, limit=limit)
+        return cls(
+            passed=False,
+            violation=violation,
+            message=message,
+            value=value,
+            limit=limit,
+        )
 
     @classmethod
-    def from_validation_result(cls, result: ValidationResult) -> "SafetyCheckResult":
+    def from_validation_result(
+        cls, result: ValidationResult
+    ) -> "SafetyCheckResult":
         """Convert a ValidationResult from safety checker server."""
         if result.valid:
             return cls.ok()
@@ -107,8 +145,11 @@ class SafetyCheckResult:
         if "outside" in msg and "geofence" in msg:
             violation = SafetyViolationType.GEOFENCE_VIOLATION
         elif "no-go" in msg or "no go" in msg:
-            violation = (SafetyViolationType.PATH_ENTERS_NO_GO_ZONE
-                        if "path" in msg else SafetyViolationType.NO_GO_ZONE_VIOLATION)
+            violation = (
+                SafetyViolationType.PATH_ENTERS_NO_GO_ZONE
+                if "path" in msg
+                else SafetyViolationType.NO_GO_ZONE_VIOLATION
+            )
         elif "leaves" in msg and "geofence" in msg:
             violation = SafetyViolationType.PATH_LEAVES_GEOFENCE
         elif "altitude" in msg:
@@ -134,7 +175,9 @@ class PreflightCheckResult:
     @property
     def failed_checks(self) -> List[str]:
         """List of failed check names."""
-        return [name for name, check in self.checks.items() if not check.passed]
+        return [
+            name for name, check in self.checks.items() if not check.passed
+        ]
 
     def add_check(self, name: str, result: SafetyCheckResult) -> None:
         """Add a check result."""
@@ -165,8 +208,12 @@ class PreflightCheckResult:
                 line += f" - {check.message}"
             lines.append(line)
         if self.warnings:
-            lines.extend(["", "Warnings:"] + [f"  ⚠ {w}" for w in self.warnings])
-        lines.extend(["=" * 40, f"Result: {'PASSED' if self.passed else 'FAILED'}"])
+            lines.extend(
+                ["", "Warnings:"] + [f"  ⚠ {w}" for w in self.warnings]
+            )
+        lines.extend(
+            ["=" * 40, f"Result: {'PASSED' if self.passed else 'FAILED'}"]
+        )
         return "\n".join(lines)
 
 
@@ -178,4 +225,3 @@ __all__ = [
     "SafetyCheckResult",
     "PreflightCheckResult",
 ]
-

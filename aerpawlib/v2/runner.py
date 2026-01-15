@@ -7,13 +7,25 @@ with clean async/await patterns.
 Decorators use `__set_name__` and descriptor protocols instead of attaching
 attributes directly to functions, providing cleaner introspection and type safety.
 """
+
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import (Any, Awaitable, Callable, ClassVar, Dict, Generic, List, Optional, Type, TypeVar, overload)
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    overload,
+)
 
 from .vehicle import Vehicle
 from .logging import get_logger, LogComponent
@@ -36,6 +48,7 @@ InitFunction = Callable[..., Awaitable[None]]
 
 class StateType(Enum):
     """Type of state execution."""
+
     STANDARD = auto()
     TIMED = auto()
 
@@ -43,6 +56,7 @@ class StateType(Enum):
 @dataclass(frozen=True, slots=True)
 class StateConfig:
     """Immutable configuration for a state machine state."""
+
     name: str
     state_type: StateType = StateType.STANDARD
     is_initial: bool = False
@@ -52,6 +66,7 @@ class StateConfig:
 
 class DecoratorType(Enum):
     """Types of decorators that can be applied to methods."""
+
     ENTRYPOINT = auto()
     STATE = auto()
     BACKGROUND = auto()
@@ -66,6 +81,7 @@ class MethodDescriptor(Generic[T]):
     This uses Python's descriptor protocol instead of the function attribute hack.
     The descriptor stores metadata and provides clean access patterns.
     """
+
     func: Callable[..., T]
     decorator_type: DecoratorType
     state_config: Optional[StateConfig] = None
@@ -142,8 +158,7 @@ class StateWrapper:
 
         try:
             await asyncio.wait_for(
-                run_state_loop(),
-                timeout=self.config.duration
+                run_state_loop(), timeout=self.config.duration
             )
         except asyncio.TimeoutError:
             # Expected when duration expires
@@ -153,6 +168,7 @@ class StateWrapper:
 
 
 # Decorators
+
 
 def entrypoint(func: F) -> F:
     """
@@ -313,6 +329,7 @@ def at_init(func: F) -> F:
 
 # Runners
 
+
 class Runner:
     """
     Base execution framework for vehicle control scripts.
@@ -400,6 +417,7 @@ class BasicRunner(Runner):
 @dataclass
 class _ExecutionContext:
     """Internal execution context for the state machine."""
+
     current_state: str
     running: bool = True
     override_next: bool = False
@@ -513,6 +531,7 @@ class StateMachine(Runner):
             return
 
         for method in self._background_methods:
+
             async def task_runner(m: Callable = method) -> None:
                 while self._ctx is not None and self._ctx.running:
                     try:
@@ -538,8 +557,7 @@ class StateMachine(Runner):
 
         if self._ctx.background_tasks:
             await asyncio.gather(
-                *self._ctx.background_tasks,
-                return_exceptions=True
+                *self._ctx.background_tasks, return_exceptions=True
             )
 
         self._ctx.background_tasks.clear()
@@ -657,4 +675,3 @@ __all__ = [
     "sleep",
     "in_background",
 ]
-

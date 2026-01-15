@@ -4,6 +4,7 @@ Simplified logging support for aerpawlib v2 API.
 Uses Python's standard logging with minimal extensions.
 For structured logging, use the structlog library.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +19,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 class LogLevel(Enum):
     """Log level enumeration matching Python logging."""
+
     DEBUG = logging.DEBUG
     INFO = logging.INFO
     WARNING = logging.WARNING
@@ -35,6 +37,7 @@ class LogLevel(Enum):
 
 class LogComponent(Enum):
     """Predefined logging components for categorized logging."""
+
     ROOT = "aerpawlib"
     VEHICLE = "aerpawlib.vehicle"
     DRONE = "aerpawlib.vehicle.drone"
@@ -48,6 +51,7 @@ class LogComponent(Enum):
     GEOFENCE = "aerpawlib.geofence"
     ZMQ = "aerpawlib.zmq"
     AERPAW = "aerpawlib.aerpaw"
+    OEO = "aerpawlib.oeo"
     USER = "aerpawlib.user"
 
 
@@ -55,16 +59,21 @@ class ColoredFormatter(logging.Formatter):
     """Colored console formatter matching aerpawlib's standard format."""
 
     COLORS = {
-        logging.DEBUG: "\033[36m",     # Cyan
-        logging.INFO: "\033[32m",      # Green
-        logging.WARNING: "\033[33m",   # Yellow
-        logging.ERROR: "\033[31m",     # Red
+        logging.DEBUG: "\033[36m",  # Cyan
+        logging.INFO: "\033[32m",  # Green
+        logging.WARNING: "\033[33m",  # Yellow
+        logging.ERROR: "\033[31m",  # Red
         logging.CRITICAL: "\033[35m",  # Magenta
     }
     RESET = "\033[0m"
     BOLD = "\033[1m"
 
-    def __init__(self, fmt: Optional[str] = None, datefmt: Optional[str] = None, use_colors: bool = True):
+    def __init__(
+        self,
+        fmt: Optional[str] = None,
+        datefmt: Optional[str] = None,
+        use_colors: bool = True,
+    ):
         super().__init__(fmt, datefmt)
         self.use_colors = use_colors and sys.stdout.isatty()
 
@@ -83,7 +92,7 @@ class ColoredFormatter(logging.Formatter):
             name = name[10:]
 
         # Format timestamp
-        timestamp = time.strftime('%H:%M:%S', time.localtime(record.created))
+        timestamp = time.strftime("%H:%M:%S", time.localtime(record.created))
 
         # Single letter level indicator
         level_letter = record.levelname[0]
@@ -154,7 +163,9 @@ def configure_logging(
     _configured = True
 
 
-def get_logger(component: Union[LogComponent, str] = LogComponent.ROOT) -> logging.Logger:
+def get_logger(
+    component: Union[LogComponent, str] = LogComponent.ROOT,
+) -> logging.Logger:
     """
     Get a logger for the specified component.
 
@@ -162,11 +173,15 @@ def get_logger(component: Union[LogComponent, str] = LogComponent.ROOT) -> loggi
     If called directly (not through CLI), the logger will still work
     with Python's default configuration.
     """
-    name = component.value if isinstance(component, LogComponent) else component
+    name = (
+        component.value if isinstance(component, LogComponent) else component
+    )
     return logging.getLogger(name)
 
 
-def set_level(level: Union[LogLevel, str, int], component: Optional[LogComponent] = None) -> None:
+def set_level(
+    level: Union[LogLevel, str, int], component: Optional[LogComponent] = None
+) -> None:
     """Set the log level for a component or the root logger."""
     if isinstance(level, LogLevel):
         level_value = level.value
@@ -181,6 +196,7 @@ def set_level(level: Union[LogLevel, str, int], component: Optional[LogComponent
 
 def log_call(level: LogLevel = LogLevel.DEBUG) -> Callable[[F], F]:
     """Decorator to log function calls and returns."""
+
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -193,7 +209,9 @@ def log_call(level: LogLevel = LogLevel.DEBUG) -> Callable[[F], F]:
             except Exception as e:
                 logger.error(f"{func.__name__} failed: {e}")
                 raise
+
         return wrapper  # type: ignore
+
     return decorator
 
 
@@ -210,7 +228,9 @@ def log_timing(level: LogLevel = LogLevel.DEBUG) -> Callable[[F], F]:
             finally:
                 elapsed = time.perf_counter() - start
                 logger.log(level.value, f"{func.__name__} took {elapsed:.3f}s")
+
         return wrapper  # type: ignore
+
     return decorator
 
 
@@ -224,4 +244,3 @@ __all__ = [
     "log_call",
     "log_timing",
 ]
-

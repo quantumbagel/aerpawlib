@@ -137,6 +137,249 @@ def setup_logging(verbose: bool = False, debug: bool = False, quiet: bool = Fals
 logger: Optional[logging.Logger] = None
 
 
+def discover_runner(api_module, experimenter_script):
+    """Search for a Runner class in the experimenter script."""
+    Runner = getattr(api_module, 'Runner')
+    StateMachine = getattr(api_module, 'StateMachine')
+    BasicRunner = getattr(api_module, 'BasicRunner')
+    # ZmqStateMachine only exists in v1/legacy
+    ZmqStateMachine = getattr(api_module, 'ZmqStateMachine', None)
+
+    runner = None
+    flag_zmq_runner = False
+
+    logger.debug("Searching for Runner class in script...")
+    for name, val in inspect.getmembers(experimenter_script):
+        if not inspect.isclass(val):
+            continue
+        if not issubclass(val, Runner):
+            continue
+        if val in [StateMachine, BasicRunner, ZmqStateMachine]:
+            continue
+        if ZmqStateMachine and issubclass(val, ZmqStateMachine):
+            flag_zmq_runner = True
+            logger.debug(f"Found ZmqStateMachine: {name}")
+        if runner:
+            logger.error("Multiple Runner classes found in script")
+            raise Exception("You can only define one runner")
+        logger.info(f"Found runner class: {name}")
+        runner = val()
+
+    if runner is None:
+        logger.error("No Runner class found in script")
+        raise Exception("No Runner class found in script")
+
+    return runner, flag_zmq_runner
+
+
+def run_v2_experiment(args, unknown_args, api_module, experimenter_script):
+    """Run an experiment using the v2 API."""
+    runner, flag_zmq_runner = discover_runner(api_module, experimenter_script)
+
+    Vehicle = getattr(api_module, 'Vehicle')
+    Drone = getattr(api_module, 'Drone')
+    Rover = getattr(api_module, 'Rover')
+    MockDrone = getattr(api_module, 'MockDrone', None)
+    AERPAWPlatform = getattr(api_module, 'AERPAWPlatform', None)
+
+    vehicle_type = {
+        "generic": Vehicle,
+        "drone": Drone,
+        "rover": Rover,
+        "none": MockDrone
+    }.get(args.vehicle, None)
+
+    if vehicle_type is None:
+        logger.error(f"Invalid vehicle type: {args.vehicle}")
+        raise Exception("Please specify a valid vehicle type")
+
+    # Connection
+    logger.info(f"Connecting to vehicle...")
+    logger.debug(f"Connection string: {args.conn}")
+
+    async def create_and_connect():
+        v = vehicle_type(args.conn)
+        await v.connect(
+            timeout=args.conn_timeout,
+            retry_count=args.conn_retries,
+            retry_delay=args.conn_retry_delay
+        )
+        return v
+
+    try:
+        vehicle: Vehicle = asyncio.run(asyncio.wait_for(
+            create_and_connect(),
+            timeout=args.conn_timeout * args.conn_retries + 10
+        ))
+        logger.info("Vehicle connected successfully")
+    except Exception as e:
+        logger.error(f"Failed to connect to vehicle: {e}")
+        raise ConnectionError(f"Could not connect to vehicle: {e}")
+
+    # Shutdown handler
+    def handle_shutdown(signum, frame):
+        sig_name = signal.Signals(signum).name
+        logger.warning(f"Received {sig_name}, initiating graceful shutdown...")
+        if vehicle:
+            if hasattr(vehicle, 'armed') and vehicle.armed:
+                logger.warning("Vehicle is armed, attempting emergency landing...")
+                try:
+                    import concurrent.futures
+                    future = asyncio.run_coroutine_threadsafe(
+                        vehicle._system.action.land(),
+                        vehicle._mavsdk_loop
+                    )
+                    future.result(timeout=10)
+                    logger.info("Emergency landing command sent")
+                except Exception as e:
+                    logger.error(f"Emergency landing failed: {e}")
+            asyncio.run(vehicle.disconnect())
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    if args.debug_dump and hasattr(vehicle, "_verbose_logging"):
+        vehicle._verbose_logging = True
+
+    aerpaw_platform = AERPAWPlatform(suppress_stdout=args.no_stdout) if AERPAWPlatform else None
+
+    logger.debug("Initializing runner arguments...")
+    runner.initialize_args(unknown_args)
+
+    if flag_zmq_runner:
+        runner._initialize_zmq_bindings(args.zmq_identifier, args.zmq_server_addr)
+
+    logger.info("=" * 50)
+    logger.info("Starting experiment execution (v2)")
+    logger.info("=" * 50)
+
+    experiment_success = False
+    connection_lost = False
+    try:
+        asyncio.run(runner.run(vehicle))
+        experiment_success = True
+        logger.info("Experiment completed successfully")
+    except Exception as e:
+        logger.error(f"Experiment failed: {e}")
+        if isinstance(e, (ConnectionResetError, BrokenPipeError, TimeoutError)):
+            connection_lost = True
+
+    # Cleanup
+    if vehicle and not connection_lost:
+        if vehicle.armed and args.rtl_at_end:
+            logger.warning("Vehicle still armed! RTLing...")
+            if aerpaw_platform:
+                try: asyncio.run(aerpaw_platform.log_to_oeo("[aerpawlib] Vehicle still armed! RTLing..."))
+                except: pass
+            asyncio.run(vehicle.rtl())
+
+        # Duration
+        try:
+            if hasattr(vehicle, '_mission_start_time') and vehicle._mission_start_time:
+                duration = int(time.time() - vehicle._mission_start_time)
+                msg = f"Mission took {duration // 60:02d}:{duration % 60:02d}"
+                logger.info(msg)
+                if aerpaw_platform:
+                    try: asyncio.run(aerpaw_platform.log_to_oeo(f"[aerpawlib] {msg}"))
+                    except: pass
+        except: pass
+        asyncio.run(vehicle.disconnect())
+
+
+def run_v1_experiment(args, unknown_args, api_module, experimenter_script, version_name="v1"):
+    """Run an experiment using the v1/legacy API."""
+    runner, flag_zmq_runner = discover_runner(api_module, experimenter_script)
+
+    Vehicle = getattr(api_module, 'Vehicle')
+    Drone = getattr(api_module, 'Drone')
+    Rover = getattr(api_module, 'Rover')
+    DummyVehicle = getattr(api_module, 'DummyVehicle', None)
+    AERPAW_Platform = getattr(api_module, 'AERPAW_Platform', None)
+
+    vehicle_type = {
+        "generic": Vehicle,
+        "drone": Drone,
+        "rover": Rover,
+        "none": DummyVehicle
+    }.get(args.vehicle, None)
+
+    if vehicle_type is None:
+        logger.error(f"Invalid vehicle type: {args.vehicle}")
+        raise Exception("Please specify a valid vehicle type")
+
+    # Connection with retry
+    vehicle = None
+    last_error = None
+    for attempt in range(1, args.conn_retries + 1):
+        logger.info(f"Connecting to vehicle (attempt {attempt}/{args.conn_retries})...")
+        try:
+            async def create_vehicle():
+                v = vehicle_type(args.conn)
+                if hasattr(v, '_connected'):
+                    start = time.time()
+                    while not v._connected and (time.time() - start) < args.conn_timeout:
+                        await asyncio.sleep(0.1)
+                    if not v._connected:
+                        raise TimeoutError("Connection timeout")
+                return v
+            vehicle = asyncio.run(asyncio.wait_for(create_vehicle(), timeout=args.conn_timeout))
+            break
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Attempt {attempt} failed: {e}")
+            if attempt < args.conn_retries:
+                time.sleep(args.conn_retry_delay)
+
+    if not vehicle:
+        raise ConnectionError(f"Could not connect: {last_error}")
+
+    # Shutdown
+    def handle_shutdown(signum, frame):
+        logger.warning("Initiating graceful shutdown...")
+        if vehicle:
+            vehicle.close()
+        sys.exit(0)
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    if AERPAW_Platform:
+        AERPAW_Platform._no_stdout = args.no_stdout
+
+    runner.initialize_args(unknown_args)
+    if args.initialize and hasattr(vehicle, '_initialize_prearm'):
+        vehicle._initialize_prearm(args.initialize)
+
+    if flag_zmq_runner:
+        runner._initialize_zmq_bindings(args.zmq_identifier, args.zmq_server_addr)
+
+    logger.info("=" * 50)
+    logger.info(f"Starting experiment execution ({version_name})")
+    logger.info("=" * 50)
+
+    experiment_success = False
+    try:
+        asyncio.run(runner.run(vehicle))
+        experiment_success = True
+    except Exception as e:
+        logger.error(f"Experiment failed: {e}")
+
+    # RTL/Cleanup
+    if vehicle:
+        if vehicle.armed and args.rtl_at_end:
+            logger.warning("Vehicle still armed! RTLing...")
+            try:
+                if args.vehicle == "drone":
+                    asyncio.run(vehicle.return_to_launch())
+                elif args.vehicle == "rover" and vehicle.home_coords:
+                    asyncio.run(vehicle.goto_coordinates(vehicle.home_coords))
+            except Exception as e:
+                logger.error(f"RTL failed: {e}")
+        vehicle.close()
+
+    sys.exit(0 if experiment_success else 1)
+
+
 def main():
     """Main entry point for aerpawlib CLI."""
 
@@ -144,13 +387,13 @@ def main():
 
     current_file = os.path.abspath(__file__)
 
-    # 2. Go up two levels to find the Project Root
+    #  Go up two levels to find the Project Root
     #    Level 1: /.../aerpawlib-vehicle-control/aerpawlib
     #    Level 2: /.../aerpawlib-vehicle-control (Where 'examples' lives)
     project_root = os.path.dirname(os.path.dirname(current_file))
 
-    # 3. Set the Process CWD to the Project Root
-    #    (This does NOT change your terminal's path, only this running process)
+    # Set the Process CWD to the Project Root
+    #    (This does NOT change the terminal's path, only this running process)
     os.chdir(project_root)
     sys.path.insert(0, os.getcwd())
 
@@ -206,7 +449,7 @@ def main():
     core_grp.add_argument("--script", help="experimenter script", required=not proxy_mode)
     core_grp.add_argument("--conn", help="connection string", required=not proxy_mode)
     core_grp.add_argument("--vehicle", help="vehicle type", choices=["generic", "drone", "rover", "none"], required=not proxy_mode)
-    core_grp.add_argument("--api-version", help="which API version to use (v1 or v2)", choices=["v1", "v2"], default="v1")
+    core_grp.add_argument("--api-version", help="which API version to use (legacy, v1 or v2)", choices=["legacy", "v1", "v2"], default="v1")
 
     # Execution Flags
     exec_grp = parser.add_argument_group("Execution Flags")
@@ -266,356 +509,42 @@ def main():
     logger.debug(f"Additional arguments: {unknown_args}")
 
 
-    # Dynamically import all symbols from the selected API version into global namespace
+    # Dynamically import API module
     api_version = args.api_version
     logger.debug(f"Loading API version: {api_version}")
     try:
         api_module = importlib.import_module(f"aerpawlib.{api_version}")
-        # Import all public symbols from the API module into globals
-        imported_symbols = []
-        if hasattr(api_module, '__all__'):
-            for name in api_module.__all__:
+        # Inject into globals for backward compatibility in some scripts if needed
+        for name in dir(api_module):
+            if not name.startswith('_'):
                 globals()[name] = getattr(api_module, name)
-                imported_symbols.append(name)
-        else:
-            # If no __all__ is defined, import all non-private symbols
-            for name in dir(api_module):
-                if not name.startswith('_'):
-                    globals()[name] = getattr(api_module, name)
-                    imported_symbols.append(name)
-        logger.debug(f"Imported {len(imported_symbols)} symbols from aerpawlib.{api_version}")
     except Exception as e:
         logger.error(f"Failed to import aerpawlib {api_version}: {e}")
-        raise Exception(f"Failed to import aerpawlib {api_version}: {e}")
+        sys.exit(1)
 
     if args.run_zmq_proxy:
-        # don't even bother running the script, just the proxy
         logger.info("Starting ZMQ proxy mode")
-        globals()['run_zmq_proxy']()
-        exit()
+        if hasattr(api_module, 'run_zmq_proxy'):
+            api_module.run_zmq_proxy()
+        else:
+            logger.error(f"API {api_version} does not support ZMQ proxy")
+        sys.exit(0)
 
-    # import script and use reflection to get StateMachine
+    # import script
     logger.debug(f"Loading experimenter script: {args.script}")
     try:
         experimenter_script = importlib.import_module(args.script)
-        logger.debug(f"Script loaded successfully from: {experimenter_script.__file__}")
     except Exception as e:
         logger.error(f"Failed to import script '{args.script}': {e}")
-        raise
-
-    runner = None
-    flag_zmq_runner = False
-    Runner = globals()['Runner']
-    StateMachine = globals()['StateMachine']
-    BasicRunner = globals()['BasicRunner']
-
-    # ZmqStateMachine only exists in v1/legacy, not v2. This means that we don't NEED it if it doesn't exist
-    ZmqStateMachine = globals().get('ZmqStateMachine', None)
-
-    logger.debug("Searching for Runner class in script...")
-    for name, val in inspect.getmembers(experimenter_script):
-        if not inspect.isclass(val):
-            continue
-        if not issubclass(val, Runner):
-            continue
-        if val in [StateMachine, BasicRunner, ZmqStateMachine]:
-            continue
-        if ZmqStateMachine and issubclass(val, ZmqStateMachine):
-            flag_zmq_runner = True
-            logger.debug(f"Found ZmqStateMachine: {name}")
-        if runner:
-            logger.error("Multiple Runner classes found in script")
-            raise Exception("You can only define one runner")
-        logger.info(f"Found runner class: {name}")
-        runner = val()
-
-    if runner is None:
-        logger.error("No Runner class found in script")
-        raise Exception("No Runner class found in script")
-
-    Vehicle = globals()['Vehicle']
-    Drone = globals()['Drone']
-    Rover = globals()['Rover']
-
-    # Handle API differences between v1 and v2
-    if api_version == "v2":
-        # v2 uses MockDrone instead of DummyVehicle
-        DummyVehicle = globals().get('MockDrone', None)
-        # v2 uses AERPAWPlatform class, not a singleton instance
-        AERPAW_Platform = globals().get('AERPAWPlatform', None)
-    else:
-        # v1 and legacy use DummyVehicle and AERPAW_Platform
-        DummyVehicle = globals().get('DummyVehicle', None)
-        AERPAW_Platform = globals().get('AERPAW_Platform', None)
-
-    vehicle_type = {
-            "generic": Vehicle,
-            "drone": Drone,
-            "rover": Rover,
-            "none": DummyVehicle
-            }.get(args.vehicle, None)
-    if vehicle_type is None:
-        logger.error(f"Invalid vehicle type: {args.vehicle}")
-        raise Exception("Please specify a valid vehicle type")
-
-    # Connection with retry logic
-    vehicle = None
-    last_error = None
-
-    # v2 handles retries internally in connect(), so only try once
-    retry_attempts = 1 if api_version == "v2" else args.conn_retries
-
-    for attempt in range(1, retry_attempts + 1):
-        logger.info(f"Connecting to vehicle (attempt {attempt}/{retry_attempts})...")
-        logger.debug(f"Connection string: {args.conn}")
-        logger.debug(f"Timeout: {args.conn_timeout}s")
-
-        try:
-            # Create vehicle with timeout
-            async def create_vehicle_with_timeout():
-                v = vehicle_type(args.conn)
-
-                # v2 API requires explicit connect() call
-                if api_version == "v2":
-                    await v.connect(
-                        timeout=args.conn_timeout,
-                        retry_count=args.conn_retries,
-                        retry_delay=args.conn_retry_delay
-                    )
-                else:
-                    # v1/legacy: Wait for connection to be established automatically
-                    if hasattr(v, '_connected'):
-                        start = time.time()
-                        while not v._connected and (time.time() - start) < args.conn_timeout:
-                            await asyncio.sleep(0.1)
-                        if not v._connected:
-                            raise TimeoutError(f"Connection timeout after {args.conn_timeout}s")
-                return v
-
-            vehicle = asyncio.run(
-                asyncio.wait_for(
-                    create_vehicle_with_timeout(),
-                    timeout=args.conn_timeout * args.conn_retries if api_version == "v2" else args.conn_timeout
-                )
-            )
-            logger.info(f"Vehicle connected successfully")
-            break
-
-        except asyncio.TimeoutError:
-            last_error = TimeoutError(f"Connection timed out after {args.conn_timeout}s")
-            logger.warning(f"Connection attempt {attempt} timed out")
-        except ConnectionRefusedError as e:
-            last_error = e
-            logger.warning(f"Connection attempt {attempt} refused: {e}")
-        except OSError as e:
-            last_error = e
-            logger.warning(f"Connection attempt {attempt} failed (OS error): {e}")
-        except Exception as e:
-            last_error = e
-            logger.warning(f"Connection attempt {attempt} failed: {e}")
-
-        if attempt < retry_attempts:
-            logger.info(f"Retrying in {args.conn_retry_delay}s...")
-            time.sleep(args.conn_retry_delay)
-
-    if vehicle is None:
-        logger.error(f"Failed to connect after {args.conn_retries} attempts")
-        logger.error(f"Last error: {last_error}")
-        raise ConnectionError(f"Could not connect to vehicle: {last_error}")
-
-    # Set up graceful shutdown handlers
-    shutdown_requested = False
-
-    def handle_shutdown_signal(signum, frame):
-        nonlocal shutdown_requested
-        sig_name = signal.Signals(signum).name
-
-        if shutdown_requested:
-            logger.warning(f"Received {sig_name} again, forcing exit...")
-            sys.exit(1)
-
-        shutdown_requested = True
-        logger.warning(f"Received {sig_name}, initiating graceful shutdown...")
-
-        # Try to land if vehicle is armed
-        if vehicle and hasattr(vehicle, 'armed') and vehicle.armed:
-            logger.warning("Vehicle is armed, attempting emergency landing...")
-            try:
-                if hasattr(vehicle, 'land') and hasattr(vehicle, '_mavsdk_loop') and vehicle._mavsdk_loop:
-                    # Run land on the MAVSDK loop (thread-safe)
-                    import concurrent.futures
-                    future = asyncio.run_coroutine_threadsafe(
-                        vehicle._system.action.land(),
-                        vehicle._mavsdk_loop
-                    )
-                    try:
-                        future.result(timeout=10)  # Wait up to 10 seconds
-                        logger.info("Emergency landing command sent")
-                    except concurrent.futures.TimeoutError:
-                        logger.warning("Emergency landing command timed out")
-            except Exception as e:
-                logger.error(f"Emergency landing failed: {e}")
-
-        # Close vehicle connection
-        if vehicle:
-            try:
-                vehicle.close()
-                logger.debug("Vehicle connection closed")
-            except Exception as e:
-                logger.error(f"Error closing vehicle: {e}")
-
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, handle_shutdown_signal)
-    signal.signal(signal.SIGTERM, handle_shutdown_signal)
-
-    if args.debug_dump and hasattr(vehicle, "_verbose_logging"):
-        vehicle._verbose_logging = True
-        logger.debug("Verbose vehicle logging enabled")
-
-    # Handle AERPAW platform initialization differences between v1 and v2
-    if api_version == "v2":
-        # v2: AERPAWPlatform is a class, create singleton instance
-        if AERPAW_Platform is not None:
-            aerpaw_platform = AERPAW_Platform(suppress_stdout=args.no_stdout)
-        else:
-            aerpaw_platform = None
-    else:
-        # v1/legacy: AERPAW_Platform is already a singleton instance
-        if AERPAW_Platform is not None:
-            AERPAW_Platform._no_stdout = args.no_stdout
-            aerpaw_platform = AERPAW_Platform
-        else:
-            aerpaw_platform = None
-
-    # everything after this point is user script dependent. avoid adding extra logic below here
-
-    logger.debug("Initializing runner arguments...")
-    runner.initialize_args(unknown_args)
-    
-    # _initialize_prearm only exists in v1 and legacy versions, so we don't need to run this
-    if vehicle_type in [Drone, Rover] and args.initialize and api_version != "v2":
-        logger.debug("Running pre-arm initialization...")
-        vehicle._initialize_prearm(args.initialize)
-    elif args.initialize and api_version == "v2":
-        logger.warning("API v2 does not support pre-arm initialization, skipping...")
-
-    if flag_zmq_runner:
-        if None in [args.zmq_identifier, args.zmq_server_addr]:
-            logger.error("ZMQ runner requires --zmq-identifier and --zmq-proxy-server")
-            raise Exception("you must declare an identifier and server address for a zmq enabled state machine")
-        logger.info(f"Initializing ZMQ bindings (ID: {args.zmq_identifier}, Server: {args.zmq_server_addr})")
-        runner._initialize_zmq_bindings(args.zmq_identifier, args.zmq_server_addr)
-
-    logger.info("=" * 50)
-    logger.info("Starting experiment execution")
-    logger.info("=" * 50)
-
-    start_time = time.time()
-    experiment_success = False
-    connection_lost = False
-
-    try:
-        asyncio.run(runner.run(vehicle))
-        experiment_success = True
-        logger.info("Experiment completed successfully")
-    except KeyboardInterrupt:
-        logger.warning("Experiment interrupted by user")
-    except ConnectionResetError as e:
-        connection_lost = True
-        logger.error(f"Connection to vehicle was reset: {e}")
-        logger.error("Vehicle connection lost during experiment!")
-    except BrokenPipeError as e:
-        connection_lost = True
-        logger.error(f"Connection to vehicle broken: {e}")
-        logger.error("Vehicle connection lost during experiment!")
-    except TimeoutError as e:
-        connection_lost = True
-        logger.error(f"Connection timed out: {e}")
-        logger.error("Vehicle stopped responding!")
-    except OSError as e:
-        if e.errno in (104, 111, 32):  # Connection reset, refused, broken pipe
-            connection_lost = True
-            logger.error(f"Connection error: {e}")
-            logger.error("Vehicle connection lost during experiment!")
-        else:
-            logger.error(f"OS error during experiment: {e}")
-            logger.debug("Exception details:", exc_info=True)
-    except Exception as e:
-        logger.error(f"Experiment failed with error: {e}")
-        logger.debug("Exception details:", exc_info=True)
-
-    # Handle connection loss
-    if connection_lost:
-        logger.warning("CONNECTION LOST - Cannot communicate with vehicle!")
-        logger.warning("If vehicle is airborne, it should RTL automatically (failsafe)")
-
-    # rtl / land if not already done (only if connection is still alive)
-    async def _rtl_cleanup(vehicle):
-        try:
-            if vehicle_type in [Drone]:
-                # Use built-in RTL which returns to MAVLink home and lands automatically
-                await vehicle.return_to_launch()
-            elif vehicle_type in [Rover]:
-                # Rovers don't have RTL in the same way, navigate to home if available
-                if vehicle.home_coords is not None:
-                    await vehicle.goto_coordinates(vehicle.home_coords)
-                else:
-                    logger.warning("No home location available for rover")
-        except Exception as e:
-            logger.error(f"RTL cleanup failed: {e}")
-            raise
-
-    if vehicle_type in [Drone, Rover] and not connection_lost:
-        try:
-            if vehicle.armed and args.rtl_at_end:
-                logger.warning("Vehicle still armed after experiment! RTLing and LANDing automatically.")
-                if aerpaw_platform:
-                    try:
-                        if api_version == "v2":
-                            asyncio.run(aerpaw_platform.log_to_oeo("[aerpawlib] Vehicle still armed after experiment! RTLing and LANDing automatically."))
-                        else:
-                            aerpaw_platform.log_to_oeo("[aerpawlib] Vehicle still armed after experiment! RTLing and LANDing automatically.")
-                    except Exception:
-                        pass  # Ignore AERPAW logging errors
-                asyncio.run(_rtl_cleanup(vehicle))
-        except Exception as e:
-            logger.error(f"Post-experiment RTL failed: {e}")
-
-        try:
-            stop_time = time.time()
-            if hasattr(vehicle, '_mission_start_time') and vehicle._mission_start_time:
-                seconds_to_complete = int(stop_time - vehicle._mission_start_time)
-                time_to_complete = f"{(seconds_to_complete // 60):02d}:{(seconds_to_complete % 60):02d}"
-                logger.info(f"Mission duration: {time_to_complete} (mm:ss)")
-                if aerpaw_platform:
-                    try:
-                        if api_version == "v2":
-                            asyncio.run(aerpaw_platform.log_to_oeo(f"[aerpawlib] Mission took {time_to_complete} mm:ss"))
-                        else:
-                            aerpaw_platform.log_to_oeo(f"[aerpawlib] Mission took {time_to_complete} mm:ss")
-                    except Exception:
-                        pass  # Ignore AERPAW logging errors
-        except Exception as e:
-            logger.debug(f"Could not calculate mission duration: {e}")
-
-    # clean up
-    logger.debug("Closing vehicle connection...")
-    try:
-        vehicle.close()
-        logger.debug("Vehicle connection closed")
-    except Exception as e:
-        logger.debug(f"Error closing vehicle connection: {e}")
-
-    if connection_lost:
-        logger.info("aerpawlib shutdown complete (connection was lost)")
         sys.exit(1)
-    elif experiment_success:
-        logger.info("aerpawlib shutdown complete")
-        sys.exit(0)
-    else:
-        logger.info("aerpawlib shutdown complete (experiment had errors)")
-        sys.exit(1)
+
+    # Dispatch to version-specific runner
+    if api_version == "v2":
+        run_v2_experiment(args, unknown_args, api_module, experimenter_script)
+    elif api_version == "v1":
+        run_v1_experiment(args, unknown_args, api_module, experimenter_script, version_name="v1")
+    elif api_version == "legacy":
+        run_v1_experiment(args, unknown_args, api_module, experimenter_script, version_name="legacy")
 
 
 if __name__ == "__main__":

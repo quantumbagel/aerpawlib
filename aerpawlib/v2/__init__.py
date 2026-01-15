@@ -11,15 +11,25 @@ Example:
     # Or import everything (lazy-loaded)
     from aerpawlib.v2 import *
 """
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 
 # These are always immediately available (lightweight)
 from .types import (
-    Coordinate, VectorNED, PositionNED, Attitude, Waypoint,
-    DroneState, GPSInfo, BatteryInfo, DroneInfo, FlightInfo,
-    FlightMode, LandedState, read_waypoints_from_plan,
+    Coordinate,
+    VectorNED,
+    PositionNED,
+    Attitude,
+    Waypoint,
+    DroneState,
+    GPSInfo,
+    BatteryInfo,
+    DroneInfo,
+    FlightInfo,
+    FlightMode,
+    LandedState,
+    read_waypoints_from_plan,
 )
 
 # Lazy import registry
@@ -31,7 +41,6 @@ _lazy_imports = {
     "CommandHandle": ".vehicle",
     "CommandStatus": ".vehicle",
     "CommandResult": ".vehicle",
-
     # Safety (subpackage)
     "SafetyViolationType": ".safety",
     "RequestType": ".safety",
@@ -56,7 +65,11 @@ _lazy_imports = {
     "clamp_speed": ".safety",
     "clamp_velocity": ".safety",
     "run_preflight_checks": ".safety",
-
+    "DisconnectReason": ".safety",
+    # Connection handling
+    "ConnectionState": ".safety",
+    "ConnectionEvent": ".safety",
+    "ConnectionHandler": ".safety",
     # Runners
     "Runner": ".runner",
     "BasicRunner": ".runner",
@@ -68,14 +81,16 @@ _lazy_imports = {
     "at_init": ".runner",
     "sleep": ".runner",
     "in_background": ".runner",
-
     # Platform
     "AERPAWPlatform": ".aerpaw",
     "AERPAWConfig": ".aerpaw",
     "MessageSeverity": ".aerpaw",
     "AERPAWConnectionError": ".aerpaw",
     "AERPAWCheckpointError": ".aerpaw",
-
+    "OEOClient": ".aerpaw",
+    "NotificationSeverity": ".aerpaw",
+    "NotificationType": ".aerpaw",
+    "OEONotification": ".aerpaw",
     # ZMQ
     "ZMQPublisher": ".zmqutil",
     "ZMQSubscriber": ".zmqutil",
@@ -83,7 +98,6 @@ _lazy_imports = {
     "ZMQProxyConfig": ".zmqutil",
     "MessageType": ".zmqutil",
     "run_zmq_proxy": ".zmqutil",
-
     # Geofence
     "GeofencePoint": ".geofence",
     "Polygon": ".geofence",
@@ -91,14 +105,12 @@ _lazy_imports = {
     "is_inside_polygon": ".geofence",
     "segments_intersect": ".geofence",
     "path_crosses_polygon": ".geofence",
-
     # Testing
     "MockDrone": ".testing",
     "MockRover": ".testing",
     "MockState": ".testing",
     "MockGPS": ".testing",
     "MockBattery": ".testing",
-
     # Logging
     "LogLevel": ".logging",
     "LogComponent": ".logging",
@@ -108,13 +120,11 @@ _lazy_imports = {
     "set_level": ".logging",
     "log_call": ".logging",
     "log_timing": ".logging",
-
     # Protocols
     "VehicleProtocol": ".protocols",
     "GPSProtocol": ".protocols",
     "BatteryProtocol": ".protocols",
     "StateProtocol": ".protocols",
-
     # Exceptions
     "AerpawlibError": ".exceptions",
     "ErrorCode": ".exceptions",
@@ -162,6 +172,7 @@ def __getattr__(name: str):
     if name in _lazy_imports:
         module_name = _lazy_imports[name]
         import importlib
+
         module = importlib.import_module(module_name, __package__)
         value = getattr(module, name)
         # Cache it for next time
@@ -178,10 +189,19 @@ def __dir__():
 # Generate __all__ from lazy imports + eager imports
 __all__ = [
     # Types (eager)
-    "Coordinate", "VectorNED", "PositionNED", "Attitude", "Waypoint",
-    "DroneState", "GPSInfo", "BatteryInfo", "DroneInfo", "FlightInfo",
-    "FlightMode", "LandedState", "read_waypoints_from_plan",
+    "Coordinate",
+    "VectorNED",
+    "PositionNED",
+    "Attitude",
+    "Waypoint",
+    "DroneState",
+    "GPSInfo",
+    "BatteryInfo",
+    "DroneInfo",
+    "FlightInfo",
+    "FlightMode",
+    "LandedState",
+    "read_waypoints_from_plan",
     # Everything else (lazy)
     *_lazy_imports.keys(),
 ]
-

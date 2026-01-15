@@ -51,7 +51,6 @@ class EnhancedMission(BasicRunner):
         try:
             await drone.connect(
                 timeout=30.0,
-                auto_reconnect=True,
                 retry_count=3,
                 retry_delay=2.0
             )
@@ -211,12 +210,3 @@ class CoordinateDemo(BasicRunner):
         renamed = base.with_name("Launch Site")
         logger.info(f"Elevated: {elevated}")
         logger.info(f"Renamed: {renamed}")
-
-
-if __name__ == "__main__":
-    # Run the coordinate demo (doesn't require actual drone)
-    logger.info("=== Coordinate Demo ===")
-    demo = CoordinateDemo()
-    # Note: In real usage, you would run the mission with the runner framework
-    # asyncio.run(demo.run(drone))
-

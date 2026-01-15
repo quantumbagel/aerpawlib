@@ -7,7 +7,10 @@ This package is organized into focused modules:
 - validation: Parameter validation functions
 - checker: ZMQ client/server for geofence validation (requires pyzmq)
 - monitor: Continuous flight safety monitoring
+- oeo: OEO notification interface
+- connection: Connection handling for failures and disconnects
 """
+
 from __future__ import annotations
 
 # Types - always available
@@ -18,6 +21,7 @@ from .types import (
     ValidationResult,
     SafetyCheckResult,
     PreflightCheckResult,
+    DisconnectReason,
 )
 
 # Limits/config - always available
@@ -38,6 +42,14 @@ from .validation import (
 
 # Monitor - always available
 from .monitor import SafetyMonitor
+
+
+# Connection handling - always available
+from .connection import (
+    ConnectionState,
+    ConnectionEvent,
+    ConnectionHandler,
+)
 
 # Checker requires ZMQ
 from .checker import (
@@ -63,6 +75,7 @@ __all__ = [
     "SafetyViolationType",
     "RequestType",
     "VehicleType",
+    "DisconnectReason",
     # Configuration
     "SafetyLimits",
     "SafetyConfig",
@@ -75,6 +88,10 @@ __all__ = [
     "SafetyCheckerServer",
     # Monitoring
     "SafetyMonitor",
+    # Connection handling
+    "ConnectionState",
+    "ConnectionEvent",
+    "ConnectionHandler",
     # Validation functions
     "validate_coordinate",
     "validate_altitude",
@@ -98,4 +115,3 @@ __all__ = [
     "SpeedLimitExceededError",
     "GeofenceViolationError",
 ]
-

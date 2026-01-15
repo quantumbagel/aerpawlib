@@ -1,12 +1,10 @@
 """
 Protocol definitions for aerpawlib v2 API.
-
-Provides Protocol classes for type-safe duck typing, enabling proper
-mock implementations that stay in sync with real classes.
 """
+
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Optional, Protocol, runtime_checkable
 
 from .types import Coordinate, VectorNED, Attitude, FlightMode, LandedState
 
@@ -14,6 +12,7 @@ from .types import Coordinate, VectorNED, Attitude, FlightMode, LandedState
 @runtime_checkable
 class GPSProtocol(Protocol):
     """Protocol for GPS state containers."""
+
     satellites: int
     fix_type: int
 
@@ -27,6 +26,7 @@ class GPSProtocol(Protocol):
 @runtime_checkable
 class BatteryProtocol(Protocol):
     """Protocol for battery state containers."""
+
     voltage: float
     charge: float
 
@@ -43,6 +43,7 @@ class BatteryProtocol(Protocol):
 @runtime_checkable
 class StateProtocol(Protocol):
     """Protocol for vehicle state containers."""
+
     heading: float
     velocity: VectorNED
     attitude: Attitude
@@ -81,6 +82,7 @@ class VehicleProtocol(Protocol):
             await vehicle.goto(latitude=51.5, longitude=-0.1)
             await vehicle.land()
     """
+
     state: StateProtocol
     gps: GPSProtocol
     battery: BatteryProtocol
@@ -115,7 +117,7 @@ class VehicleProtocol(Protocol):
     @property
     def is_in_air(self) -> bool: ...
 
-    async def connect(self, timeout: float = 30.0, auto_reconnect: bool = False) -> bool: ...
+    async def connect(self, timeout: float = 30.0) -> bool: ...
 
     async def disconnect(self) -> None: ...
 
@@ -123,7 +125,9 @@ class VehicleProtocol(Protocol):
 
     async def disarm(self, force: bool = False) -> bool: ...
 
-    async def takeoff(self, altitude: float = 5.0, wait: bool = True) -> bool: ...
+    async def takeoff(
+        self, altitude: float = 5.0, wait: bool = True
+    ) -> bool: ...
 
     async def land(self, wait: bool = True) -> bool: ...
 
@@ -152,4 +156,3 @@ __all__ = [
     "StateProtocol",
     "VehicleProtocol",
 ]
-

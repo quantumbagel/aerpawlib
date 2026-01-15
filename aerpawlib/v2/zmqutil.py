@@ -9,6 +9,7 @@ Features:
 - Background proxy process management
 - Type-safe message handling
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,17 +17,19 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 import json
-import logging
 
 import zmq
+
 try:
     import zmq.asyncio
+
     ZMQ_ASYNC_AVAILABLE = True
 except ImportError:
     ZMQ_ASYNC_AVAILABLE = False
 
 # Use modular logging system
 from .logging import get_logger, LogComponent
+
 logger = get_logger(LogComponent.ZMQ)
 
 
@@ -37,16 +40,17 @@ ZMQ_PROXY_OUT_PORT = 5571
 
 class MessageType(Enum):
     """Types of ZMQ messages used in aerpawlib."""
+
     STATE_TRANSITION = "state_transition"
     FIELD_REQUEST = "field_request"
     FIELD_CALLBACK = "field_callback"
     CUSTOM = "custom"
 
 
-
 @dataclass
 class ZMQProxyConfig:
     """Configuration for ZMQ proxy."""
+
     in_port: int = ZMQ_PROXY_IN_PORT
     out_port: int = ZMQ_PROXY_OUT_PORT
     bind_address: str = "*"
@@ -102,6 +106,7 @@ class ZMQMessage:
         payload: The message payload (will be JSON serialized)
         sender_id: Optional identifier for the sender
     """
+
     topic: str
     message_type: MessageType
     payload: Any
@@ -112,16 +117,16 @@ class ZMQMessage:
         data = {
             "type": self.message_type.value,
             "payload": self.payload,
-            "sender_id": self.sender_id
+            "sender_id": self.sender_id,
         }
-        return f"{self.topic} {json.dumps(data)}".encode('utf-8')
+        return f"{self.topic} {json.dumps(data)}".encode("utf-8")
 
     @classmethod
     def deserialize(cls, data: bytes) -> ZMQMessage:
         """Deserialize a received message."""
-        decoded = data.decode('utf-8')
+        decoded = data.decode("utf-8")
         # Split topic from payload (topic is first word)
-        parts = decoded.split(' ', 1)
+        parts = decoded.split(" ", 1)
         if len(parts) != 2:
             raise ValueError(f"Invalid message format: {decoded}")
 
@@ -132,7 +137,7 @@ class ZMQMessage:
             topic=topic,
             message_type=MessageType(payload_data.get("type", "custom")),
             payload=payload_data.get("payload"),
-            sender_id=payload_data.get("sender_id")
+            sender_id=payload_data.get("sender_id"),
         )
 
 
@@ -149,7 +154,7 @@ class ZMQPublisher:
         self,
         proxy_address: str = "localhost",
         proxy_port: int = ZMQ_PROXY_IN_PORT,
-        sender_id: Optional[str] = None
+        sender_id: Optional[str] = None,
     ):
         """
         Initialize a ZMQ publisher.
@@ -203,7 +208,7 @@ class ZMQPublisher:
         self,
         topic: str,
         payload: Any,
-        message_type: MessageType = MessageType.CUSTOM
+        message_type: MessageType = MessageType.CUSTOM,
     ):
         """
         Publish a message.
@@ -214,13 +219,15 @@ class ZMQPublisher:
             message_type: Type of message
         """
         if not self._connected:
-            raise RuntimeError("Publisher not connected. Call connect() first.")
+            raise RuntimeError(
+                "Publisher not connected. Call connect() first."
+            )
 
         message = ZMQMessage(
             topic=topic,
             message_type=message_type,
             payload=payload,
-            sender_id=self._sender_id
+            sender_id=self._sender_id,
         )
 
         if ZMQ_ASYNC_AVAILABLE:
@@ -243,7 +250,7 @@ class ZMQSubscriber:
         self,
         proxy_address: str = "localhost",
         proxy_port: int = ZMQ_PROXY_OUT_PORT,
-        topics: Optional[list[str]] = None
+        topics: Optional[list[str]] = None,
     ):
         """
         Initialize a ZMQ subscriber.
@@ -301,7 +308,9 @@ class ZMQSubscriber:
         await self.disconnect()
         return False
 
-    async def receive(self, timeout: Optional[float] = None) -> Optional[ZMQMessage]:
+    async def receive(
+        self, timeout: Optional[float] = None
+    ) -> Optional[ZMQMessage]:
         """
         Receive a single message.
 
@@ -312,7 +321,9 @@ class ZMQSubscriber:
             The received message, or None if timeout occurred.
         """
         if not self._connected:
-            raise RuntimeError("Subscriber not connected. Call connect() first.")
+            raise RuntimeError(
+                "Subscriber not connected. Call connect() first."
+            )
 
         if timeout is not None:
             self._socket.setsockopt(zmq.RCVTIMEO, int(timeout * 1000))
@@ -359,4 +370,3 @@ class ZMQSubscriber:
     def stop(self):
         """Stop receiving messages (breaks the async iterator)."""
         self._running = False
-

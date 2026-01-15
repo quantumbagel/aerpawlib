@@ -1,20 +1,27 @@
 """
 Mock vehicle classes for testing aerpawlib v2 API.
-
-Uses Protocol for interface compliance, ensuring mocks stay in sync with real classes.
 """
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from .types import Coordinate, VectorNED, Attitude, FlightMode, LandedState, Waypoint
+from .types import (
+    Coordinate,
+    VectorNED,
+    Attitude,
+    FlightMode,
+    LandedState,
+    Waypoint,
+)
 
 
 @dataclass
 class MockState:
     """Mutable state for mock vehicle."""
+
     latitude: float = 35.7275
     longitude: float = -78.6960
     altitude: float = 0.0
@@ -44,6 +51,7 @@ class MockState:
 @dataclass
 class MockGPS:
     """Mock GPS container."""
+
     satellites: int = 12
     fix_type: int = 3
 
@@ -53,12 +61,15 @@ class MockGPS:
 
     @property
     def quality(self) -> str:
-        return {0: "No GPS", 1: "No Fix", 2: "2D Fix", 3: "3D Fix"}.get(self.fix_type, "Unknown")
+        return {0: "No GPS", 1: "No Fix", 2: "2D Fix", 3: "3D Fix"}.get(
+            self.fix_type, "Unknown"
+        )
 
 
 @dataclass
 class MockBattery:
     """Mock battery container."""
+
     voltage: float = 16.8
     charge: float = 1.0
 
@@ -152,7 +163,7 @@ class MockDrone:
         return self.state.is_in_air
 
     # Connection
-    async def connect(self, timeout: float = 30.0, auto_reconnect: bool = False, **kwargs) -> bool:
+    async def connect(self, timeout: float = 30.0, **kwargs) -> bool:
         await asyncio.sleep(0.01)
         self._connected = True
         self._home = self.position
@@ -165,14 +176,17 @@ class MockDrone:
 
     # Events
     def on(self, event: Any, callback: Callable) -> None:
-        event_name = event.value if hasattr(event, 'value') else str(event)
+        event_name = event.value if hasattr(event, "value") else str(event)
         if event_name not in self._callbacks:
             self._callbacks[event_name] = []
         self._callbacks[event_name].append(callback)
 
     def off(self, event: Any, callback: Callable) -> None:
-        event_name = event.value if hasattr(event, 'value') else str(event)
-        if event_name in self._callbacks and callback in self._callbacks[event_name]:
+        event_name = event.value if hasattr(event, "value") else str(event)
+        if (
+            event_name in self._callbacks
+            and callback in self._callbacks[event_name]
+        ):
             self._callbacks[event_name].remove(callback)
 
     async def _trigger_callbacks(self, event: str, *args, **kwargs) -> None:
@@ -185,9 +199,11 @@ class MockDrone:
     async def arm(self, force: bool = False) -> bool:
         if self._fail_on_arm:
             from .exceptions import ArmError
+
             raise ArmError("Simulated arm failure")
         if not force and not self._is_armable:
             from .exceptions import NotArmableError
+
             raise NotArmableError()
         await asyncio.sleep(0.01)
         self._armed = True
@@ -204,6 +220,7 @@ class MockDrone:
     async def takeoff(self, altitude: float = 5.0, wait: bool = True) -> bool:
         if self._fail_on_takeoff:
             from .exceptions import TakeoffError
+
             raise TakeoffError(target_altitude=altitude)
         if not self._armed:
             await self.arm()
@@ -257,12 +274,15 @@ class MockDrone:
     ) -> None:
         if self._fail_on_goto:
             from .exceptions import NavigationError
+
             raise NavigationError()
 
         if coordinates is not None:
             target = coordinates
         elif latitude is not None and longitude is not None:
-            target = Coordinate(latitude, longitude, altitude or self.state.altitude)
+            target = Coordinate(
+                latitude, longitude, altitude or self.state.altitude
+            )
         else:
             raise ValueError("Must provide coordinates or latitude/longitude")
 
@@ -274,9 +294,15 @@ class MockDrone:
 
         for i in range(steps):
             frac = (i + 1) / steps
-            self.state.latitude = start.latitude + (target.latitude - start.latitude) * frac
-            self.state.longitude = start.longitude + (target.longitude - start.longitude) * frac
-            self.state.altitude = start.altitude + (target.altitude - start.altitude) * frac
+            self.state.latitude = (
+                start.latitude + (target.latitude - start.latitude) * frac
+            )
+            self.state.longitude = (
+                start.longitude + (target.longitude - start.longitude) * frac
+            )
+            self.state.altitude = (
+                start.altitude + (target.altitude - start.altitude) * frac
+            )
             self.state.relative_altitude = self.state.altitude
             self.state.groundspeed = travel_speed
             await asyncio.sleep(0.02)
@@ -316,17 +342,25 @@ class MockDrone:
     def inject_navigation_failure(self, fail: bool = True) -> None:
         self._fail_on_goto = fail
 
-    async def wait_for_gps_fix(self, min_satellites: int = 6, timeout: float = 60.0) -> bool:
+    async def wait_for_gps_fix(
+        self, min_satellites: int = 6, timeout: float = 60.0
+    ) -> bool:
         if self.gps.has_fix and self.gps.satellites >= min_satellites:
             return True
         from .exceptions import TimeoutError
-        raise TimeoutError("GPS fix timeout", operation="wait_for_gps_fix", timeout=timeout)
+
+        raise TimeoutError(
+            "GPS fix timeout", operation="wait_for_gps_fix", timeout=timeout
+        )
 
     async def wait_for_armable(self, timeout: float = 60.0) -> bool:
         if self._is_armable:
             return True
         from .exceptions import TimeoutError
-        raise TimeoutError("Armable timeout", operation="wait_for_armable", timeout=timeout)
+
+        raise TimeoutError(
+            "Armable timeout", operation="wait_for_armable", timeout=timeout
+        )
 
 
 class MockRover(MockDrone):
@@ -342,4 +376,3 @@ class MockRover(MockDrone):
 
 
 __all__ = ["MockDrone", "MockRover", "MockState", "MockGPS", "MockBattery"]
-

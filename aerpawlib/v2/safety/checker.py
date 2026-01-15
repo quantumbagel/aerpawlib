@@ -4,6 +4,7 @@ Safety checker client/server for aerpawlib v2 API.
 Provides ZMQ-based geofence validation through a client-server architecture.
 ZMQ is a hard requirement for this module - it will fail fast if not available.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,12 +22,16 @@ except ImportError as e:
         "Install with: pip install pyzmq"
     ) from e
 
-from .types import RequestType, ValidationResult, SafetyCheckResult, SafetyViolationType
+from .types import (
+    RequestType,
+    ValidationResult,
+    SafetyCheckResult,
+    SafetyViolationType,
+)
 from .limits import SafetyConfig, VehicleType
 
 if TYPE_CHECKING:
     from ..types import Coordinate
-    from ..geofence import Polygon
 
 from ..logging import get_logger, LogComponent
 
@@ -87,7 +92,9 @@ class SafetyCheckerClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.disconnect()
 
-    async def _send_request(self, request_type: RequestType, params: Optional[list] = None) -> ValidationResult:
+    async def _send_request(
+        self, request_type: RequestType, params: Optional[list] = None
+    ) -> ValidationResult:
         """Send a request to the server and get the response."""
         if not self._connected:
             raise RuntimeError("Not connected to safety checker server")
@@ -100,31 +107,41 @@ class SafetyCheckerClient:
         return ValidationResult(
             valid=response.get("result", False),
             message=response.get("message", ""),
-            request_type=request_type
+            request_type=request_type,
         )
 
     async def check_server_status(self) -> ValidationResult:
         """Check if the safety checker server is running."""
         return await self._send_request(RequestType.SERVER_STATUS)
 
-    async def validate_waypoint(self, current: "Coordinate", target: "Coordinate") -> ValidationResult:
+    async def validate_waypoint(
+        self, current: "Coordinate", target: "Coordinate"
+    ) -> ValidationResult:
         """Validate a waypoint command against geofences."""
         return await self._send_request(
             RequestType.VALIDATE_WAYPOINT,
-            [current.to_json(), target.to_json()]
+            [current.to_json(), target.to_json()],
         )
 
     async def validate_speed(self, speed: float) -> ValidationResult:
         """Validate a speed change command."""
         return await self._send_request(RequestType.VALIDATE_SPEED, [speed])
 
-    async def validate_takeoff(self, altitude: float, latitude: float, longitude: float) -> ValidationResult:
+    async def validate_takeoff(
+        self, altitude: float, latitude: float, longitude: float
+    ) -> ValidationResult:
         """Validate a takeoff command."""
-        return await self._send_request(RequestType.VALIDATE_TAKEOFF, [altitude, latitude, longitude])
+        return await self._send_request(
+            RequestType.VALIDATE_TAKEOFF, [altitude, latitude, longitude]
+        )
 
-    async def validate_landing(self, latitude: float, longitude: float) -> ValidationResult:
+    async def validate_landing(
+        self, latitude: float, longitude: float
+    ) -> ValidationResult:
         """Validate a landing command."""
-        return await self._send_request(RequestType.VALIDATE_LANDING, [latitude, longitude])
+        return await self._send_request(
+            RequestType.VALIDATE_LANDING, [latitude, longitude]
+        )
 
 
 class SafetyCheckerServer:
@@ -159,18 +176,24 @@ class SafetyCheckerServer:
             RequestType.VALIDATE_LANDING: self._handle_validate_landing,
         }
 
-    def _create_response(self, request_type: RequestType, result: bool, message: str = "") -> bytes:
+    def _create_response(
+        self, request_type: RequestType, result: bool, message: str = ""
+    ) -> bytes:
         """Create a serialized response message."""
-        return _serialize_message({
-            "request_function": request_type.value,
-            "result": result,
-            "message": message
-        })
+        return _serialize_message(
+            {
+                "request_function": request_type.value,
+                "result": result,
+                "message": message,
+            }
+        )
 
     def _handle_server_status(self) -> Tuple[bool, str]:
         return (True, "")
 
-    def _handle_validate_waypoint(self, current_json: str, target_json: str) -> Tuple[bool, str]:
+    def _handle_validate_waypoint(
+        self, current_json: str, target_json: str
+    ) -> Tuple[bool, str]:
         from ..types import Coordinate
         from ..geofence import is_inside_polygon, path_crosses_polygon
 
@@ -180,10 +203,22 @@ class SafetyCheckerServer:
 
         # Check altitude for copters
         if self._config.vehicle_type == VehicleType.COPTER:
-            if self._config.min_altitude is not None and target.altitude < self._config.min_altitude:
-                return (False, f"Altitude {target.altitude}m below minimum {self._config.min_altitude}m")
-            if self._config.max_altitude is not None and target.altitude > self._config.max_altitude:
-                return (False, f"Altitude {target.altitude}m exceeds maximum {self._config.max_altitude}m")
+            if (
+                self._config.min_altitude is not None
+                and target.altitude < self._config.min_altitude
+            ):
+                return (
+                    False,
+                    f"Altitude {target.altitude}m below minimum {self._config.min_altitude}m",
+                )
+            if (
+                self._config.max_altitude is not None
+                and target.altitude > self._config.max_altitude
+            ):
+                return (
+                    False,
+                    f"Altitude {target.altitude}m exceeds maximum {self._config.max_altitude}m",
+                )
 
         # Check geofences
         inside_geofence = False
@@ -194,41 +229,68 @@ class SafetyCheckerServer:
                 break
 
         if not inside_geofence:
-            return (False, f"Waypoint ({target.latitude},{target.longitude}) is outside of the geofence")
+            return (
+                False,
+                f"Waypoint ({target.latitude},{target.longitude}) is outside of the geofence",
+            )
 
         for zone in self._config.exclude_geofences:
             if is_inside_polygon(target, zone):
-                return (False, f"Waypoint ({target.latitude},{target.longitude}) is inside a no-go zone")
+                return (
+                    False,
+                    f"Waypoint ({target.latitude},{target.longitude}) is inside a no-go zone",
+                )
 
-        if active_geofence and path_crosses_polygon(current, target, active_geofence):
-            return (False, f"Path from ({current.latitude},{current.longitude}) to ({target.latitude},{target.longitude}) leaves geofence")
+        if active_geofence and path_crosses_polygon(
+            current, target, active_geofence
+        ):
+            return (
+                False,
+                f"Path from ({current.latitude},{current.longitude}) to ({target.latitude},{target.longitude}) leaves geofence",
+            )
 
         for zone in self._config.exclude_geofences:
             if path_crosses_polygon(current, target, zone):
-                return (False, f"Path enters no-go zone")
+                return (False, "Path enters no-go zone")
 
         return (True, "")
 
     def _handle_validate_speed(self, speed: float) -> Tuple[bool, str]:
         if speed > self._config.max_speed:
-            return (False, f"Speed {speed} exceeds maximum {self._config.max_speed}")
+            return (
+                False,
+                f"Speed {speed} exceeds maximum {self._config.max_speed}",
+            )
         if speed < self._config.min_speed:
-            return (False, f"Speed {speed} below minimum {self._config.min_speed}")
+            return (
+                False,
+                f"Speed {speed} below minimum {self._config.min_speed}",
+            )
         return (True, "")
 
-    def _handle_validate_takeoff(self, altitude: float, latitude: float, longitude: float) -> Tuple[bool, str]:
+    def _handle_validate_takeoff(
+        self, altitude: float, latitude: float, longitude: float
+    ) -> Tuple[bool, str]:
         from ..types import Coordinate
 
         if self._config.vehicle_type == VehicleType.COPTER:
-            if self._config.min_altitude is not None and altitude < self._config.min_altitude:
+            if (
+                self._config.min_altitude is not None
+                and altitude < self._config.min_altitude
+            ):
                 return (False, f"Takeoff altitude {altitude}m below minimum")
-            if self._config.max_altitude is not None and altitude > self._config.max_altitude:
+            if (
+                self._config.max_altitude is not None
+                and altitude > self._config.max_altitude
+            ):
                 return (False, f"Takeoff altitude {altitude}m exceeds maximum")
 
         self._takeoff_location = Coordinate(latitude, longitude, 0)
         return (True, "")
 
-    def _handle_validate_landing(self, latitude: float, longitude: float) -> Tuple[bool, str]:
+    def _handle_validate_landing(
+        self, latitude: float, longitude: float
+    ) -> Tuple[bool, str]:
         from ..types import Coordinate
 
         if self._takeoff_location is None:
@@ -237,7 +299,10 @@ class SafetyCheckerServer:
         current = Coordinate(latitude, longitude, 0)
         distance = self._takeoff_location.ground_distance_to(current)
         if distance > 5:
-            return (False, f"Landing location must be within 5m of takeoff ({distance:.1f}m away)")
+            return (
+                False,
+                f"Landing location must be within 5m of takeoff ({distance:.1f}m away)",
+            )
         return (True, "")
 
     async def serve(self) -> None:
@@ -260,14 +325,22 @@ class SafetyCheckerServer:
                     handler = self._handlers.get(request_type)
 
                     if handler is None:
-                        response = self._create_response(request_type, False, f"Unknown request: {request_type.value}")
+                        response = self._create_response(
+                            request_type,
+                            False,
+                            f"Unknown request: {request_type.value}",
+                        )
                     else:
                         params = message.get("params") or []
                         result, msg = handler(*params)
-                        response = self._create_response(request_type, result, msg)
+                        response = self._create_response(
+                            request_type, result, msg
+                        )
 
                 except (KeyError, ValueError) as e:
-                    response = _serialize_message({"result": False, "message": f"Invalid request: {e}"})
+                    response = _serialize_message(
+                        {"result": False, "message": f"Invalid request: {e}"}
+                    )
 
                 await self._socket.send(response)
         finally:
@@ -281,11 +354,12 @@ class SafetyCheckerServer:
 
 # Helper functions for validation with checker
 
+
 async def validate_waypoint_with_checker(
     checker: SafetyCheckerClient,
     current: "Coordinate",
     target: "Coordinate",
-    raise_on_fail: bool = True
+    raise_on_fail: bool = True,
 ) -> SafetyCheckResult:
     """Validate a waypoint against the safety checker server."""
     from ..exceptions import GeofenceViolationError
@@ -302,13 +376,14 @@ async def validate_waypoint_with_checker(
         raise
     except Exception as e:
         logger.error(f"Safety checker validation failed: {e}")
-        return SafetyCheckResult.fail(SafetyViolationType.GEOFENCE_VIOLATION, f"Safety checker error: {e}")
+        return SafetyCheckResult.fail(
+            SafetyViolationType.GEOFENCE_VIOLATION,
+            f"Safety checker error: {e}",
+        )
 
 
 async def validate_speed_with_checker(
-    checker: SafetyCheckerClient,
-    speed: float,
-    raise_on_fail: bool = True
+    checker: SafetyCheckerClient, speed: float, raise_on_fail: bool = True
 ) -> SafetyCheckResult:
     """Validate a speed change against the safety checker server."""
     from ..exceptions import SpeedLimitExceededError
@@ -325,7 +400,9 @@ async def validate_speed_with_checker(
         raise
     except Exception as e:
         logger.error(f"Safety checker speed validation failed: {e}")
-        return SafetyCheckResult.fail(SafetyViolationType.SPEED_TOO_HIGH, f"Safety checker error: {e}")
+        return SafetyCheckResult.fail(
+            SafetyViolationType.SPEED_TOO_HIGH, f"Safety checker error: {e}"
+        )
 
 
 async def validate_takeoff_with_checker(
@@ -333,7 +410,7 @@ async def validate_takeoff_with_checker(
     altitude: float,
     latitude: float,
     longitude: float,
-    raise_on_fail: bool = True
+    raise_on_fail: bool = True,
 ) -> SafetyCheckResult:
     """Validate a takeoff against the safety checker server."""
     from ..exceptions import SafetyError
@@ -350,7 +427,10 @@ async def validate_takeoff_with_checker(
         raise
     except Exception as e:
         logger.error(f"Safety checker takeoff validation failed: {e}")
-        return SafetyCheckResult.fail(SafetyViolationType.ALTITUDE_OUT_OF_BOUNDS, f"Safety checker error: {e}")
+        return SafetyCheckResult.fail(
+            SafetyViolationType.ALTITUDE_OUT_OF_BOUNDS,
+            f"Safety checker error: {e}",
+        )
 
 
 __all__ = [
@@ -360,4 +440,3 @@ __all__ = [
     "validate_speed_with_checker",
     "validate_takeoff_with_checker",
 ]
-

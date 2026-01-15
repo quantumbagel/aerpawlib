@@ -4,6 +4,7 @@ Core types for aerpawlib v2 API.
 This module provides data classes for representing vehicle state,
 coordinates, and telemetry information.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,6 +16,7 @@ from enum import Enum, auto
 
 class FlightMode(Enum):
     """Flight modes available for vehicles."""
+
     MANUAL = auto()
     STABILIZED = auto()
     ALTITUDE = auto()
@@ -31,6 +33,7 @@ class FlightMode(Enum):
 
 class LandedState(Enum):
     """Landed state of the vehicle."""
+
     UNKNOWN = auto()
     ON_GROUND = auto()
     IN_AIR = auto()
@@ -46,6 +49,7 @@ class VectorNED:
 
     Units are expressed in meters.
     """
+
     north: float = 0.0
     east: float = 0.0
     down: float = 0.0
@@ -72,7 +76,9 @@ class VectorNED:
     def cross_product(self, other: VectorNED) -> VectorNED:
         """Find the cross product of this and another vector (self x other)."""
         if not isinstance(other, VectorNED):
-            raise TypeError("Can only compute cross product with another VectorNED")
+            raise TypeError(
+                "Can only compute cross product with another VectorNED"
+            )
         return VectorNED(
             self.east * other.down + self.down * other.east,
             self.down * other.north - self.north * other.down,
@@ -82,8 +88,14 @@ class VectorNED:
     def dot_product(self, other: VectorNED) -> float:
         """Compute the dot product of this and another vector."""
         if not isinstance(other, VectorNED):
-            raise TypeError("Can only compute dot product with another VectorNED")
-        return self.north * other.north + self.east * other.east + self.down * other.down
+            raise TypeError(
+                "Can only compute dot product with another VectorNED"
+            )
+        return (
+            self.north * other.north
+            + self.east * other.east
+            + self.down * other.down
+        )
 
     def magnitude(self, ignore_vertical: bool = False) -> float:
         """
@@ -97,8 +109,7 @@ class VectorNED:
         """
         if ignore_vertical:
             return math.hypot(self.north, self.east)
-        return math.sqrt(self.north ** 2 + self.east ** 2 + self.down ** 2)
-
+        return math.sqrt(self.north**2 + self.east**2 + self.down**2)
 
     def normalize(self) -> VectorNED:
         """
@@ -110,7 +121,6 @@ class VectorNED:
             return VectorNED(0, 0, 0)
         return VectorNED(self.north / mag, self.east / mag, self.down / mag)
 
-
     def heading(self) -> float:
         """Get the compass heading of this vector in degrees (0-360, north=0)."""
         return (90 - math.degrees(math.atan2(self.north, self.east))) % 360
@@ -121,7 +131,7 @@ class VectorNED:
         return VectorNED(
             self.north + other.north,
             self.east + other.east,
-            self.down + other.down
+            self.down + other.down,
         )
 
     def __sub__(self, other: VectorNED) -> VectorNED:
@@ -130,13 +140,15 @@ class VectorNED:
         return VectorNED(
             self.north - other.north,
             self.east - other.east,
-            self.down - other.down
+            self.down - other.down,
         )
 
     def __mul__(self, scalar: float) -> VectorNED:
         if not isinstance(scalar, (int, float)):
             raise TypeError("Can only multiply VectorNED by a scalar")
-        return VectorNED(self.north * scalar, self.east * scalar, self.down * scalar)
+        return VectorNED(
+            self.north * scalar, self.east * scalar, self.down * scalar
+        )
 
     def __rmul__(self, scalar: float) -> VectorNED:
         return self.__mul__(scalar)
@@ -157,6 +169,7 @@ class PositionNED:
     This is functionally identical to VectorNED but provides clearer semantics
     when representing absolute positions rather than relative movements.
     """
+
     north: float = 0.0
     east: float = 0.0
     down: float = 0.0
@@ -184,6 +197,7 @@ class Coordinate:
 
     Coordinates support arithmetic with VectorNED for relative movement calculations.
     """
+
     latitude: float
     longitude: float
     altitude: float = 0.0
@@ -230,9 +244,12 @@ class Coordinate:
         d2r = math.pi / 180
         dlon = (other.longitude - self.longitude) * d2r
         dlat = (other.latitude - self.latitude) * d2r
-        a = (math.sin(dlat / 2) ** 2 +
-             math.cos(self.latitude * d2r) * math.cos(other.latitude * d2r) *
-             math.sin(dlon / 2) ** 2)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(self.latitude * d2r)
+            * math.cos(other.latitude * d2r)
+            * math.sin(dlon / 2) ** 2
+        )
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         ground_distance = 6367000 * c  # Earth radius in meters
         return math.hypot(ground_distance, other.altitude - self.altitude)
@@ -241,7 +258,9 @@ class Coordinate:
         """Get the ground distance (ignoring altitude) to another Coordinate in meters."""
         if not isinstance(other, Coordinate):
             raise TypeError("Can only compute distance to another Coordinate")
-        other_at_same_alt = Coordinate(other.latitude, other.longitude, self.altitude)
+        other_at_same_alt = Coordinate(
+            other.latitude, other.longitude, self.altitude
+        )
         return self.distance_to(other_at_same_alt)
 
     def bearing_to(self, other: Coordinate, wrap_360: bool = True) -> float:
@@ -277,10 +296,14 @@ class Coordinate:
         """
         earth_radius = 6378137.0
         d_lat = vector.north / earth_radius
-        d_lon = vector.east / (earth_radius * math.cos(math.radians(self.latitude)))
+        d_lon = vector.east / (
+            earth_radius * math.cos(math.radians(self.latitude))
+        )
         new_lat = self.latitude + math.degrees(d_lat)
         new_lon = self.longitude + math.degrees(d_lon)
-        return Coordinate(new_lat, new_lon, self.altitude - vector.down, self.name)
+        return Coordinate(
+            new_lat, new_lon, self.altitude - vector.down, self.name
+        )
 
     def vector_to(self, other: Coordinate) -> VectorNED:
         """
@@ -299,8 +322,11 @@ class Coordinate:
         d_lat = other.latitude - self.latitude
         d_lon = other.longitude - self.longitude
 
-        north = d_lat * (111132.954 - 559.822 * math.cos(2 * lat_mid) +
-                         1.175 * math.cos(4 * lat_mid))
+        north = d_lat * (
+            111132.954
+            - 559.822 * math.cos(2 * lat_mid)
+            + 1.175 * math.cos(4 * lat_mid)
+        )
         east = d_lon * (111132.954 * math.cos(lat_mid))
         down = self.altitude - other.altitude
 
@@ -316,16 +342,20 @@ class Coordinate:
             return self.offset_by(-other)
         elif isinstance(other, Coordinate):
             return self.vector_to(other)
-        raise TypeError("Can only subtract VectorNED or Coordinate from Coordinate")
+        raise TypeError(
+            "Can only subtract VectorNED or Coordinate from Coordinate"
+        )
 
     def to_json(self) -> str:
         """Return a JSON string representing this Coordinate."""
-        return json.dumps({
-            "latitude": self.latitude,
-            "longitude": self.longitude,
-            "altitude": self.altitude,
-            "name": self.name
-        })
+        return json.dumps(
+            {
+                "latitude": self.latitude,
+                "longitude": self.longitude,
+                "altitude": self.altitude,
+                "name": self.name,
+            }
+        )
 
     @classmethod
     def from_json(cls, json_str: str) -> Coordinate:
@@ -335,11 +365,13 @@ class Coordinate:
             latitude=data["latitude"],
             longitude=data["longitude"],
             altitude=data.get("altitude", 0.0),
-            name=data.get("name")
+            name=data.get("name"),
         )
 
     @classmethod
-    def from_relative(cls, base: Coordinate, vector: VectorNED, name: Optional[str] = None) -> Coordinate:
+    def from_relative(
+        cls, base: Coordinate, vector: VectorNED, name: Optional[str] = None
+    ) -> Coordinate:
         """
         Create a new Coordinate relative to a base coordinate.
 
@@ -357,10 +389,14 @@ class Coordinate:
         """
         result = base.offset_by(vector)
         if name:
-            result = Coordinate(result.latitude, result.longitude, result.altitude, name)
+            result = Coordinate(
+                result.latitude, result.longitude, result.altitude, name
+            )
         return result
 
-    def midpoint_to(self, other: Coordinate, name: Optional[str] = None) -> Coordinate:
+    def midpoint_to(
+        self, other: Coordinate, name: Optional[str] = None
+    ) -> Coordinate:
         """
         Calculate the midpoint between this coordinate and another.
 
@@ -378,7 +414,9 @@ class Coordinate:
         """
         return self.interpolate_to(other, 0.5, name)
 
-    def interpolate_to(self, other: Coordinate, fraction: float, name: Optional[str] = None) -> Coordinate:
+    def interpolate_to(
+        self, other: Coordinate, fraction: float, name: Optional[str] = None
+    ) -> Coordinate:
         """
         Interpolate between this coordinate and another.
 
@@ -403,7 +441,12 @@ class Coordinate:
         alt = self.altitude + (other.altitude - self.altitude) * fraction
         return Coordinate(lat, lon, alt, name)
 
-    def path_to(self, other: Coordinate, num_points: int, include_endpoints: bool = True) -> List[Coordinate]:
+    def path_to(
+        self,
+        other: Coordinate,
+        num_points: int,
+        include_endpoints: bool = True,
+    ) -> List[Coordinate]:
         """
         Generate a path of evenly spaced points to another coordinate.
 
@@ -462,7 +505,6 @@ class Coordinate:
         """
         return Coordinate(self.latitude, self.longitude, self.altitude, name)
 
-
     def __repr__(self) -> str:
         name_str = f", name='{self.name}'" if self.name else ""
         return f"Coordinate(lat={self.latitude}, lon={self.longitude}, alt={self.altitude}{name_str})"
@@ -477,6 +519,7 @@ class Attitude:
     - pitch: rotation around lateral axis (positive = nose up)
     - yaw: rotation around vertical axis (positive = clockwise from above, 0 = North)
     """
+
     roll: float = 0.0
     pitch: float = 0.0
     yaw: float = 0.0
@@ -505,6 +548,7 @@ class Attitude:
 @dataclass
 class GPSInfo:
     """GPS status information."""
+
     satellites: int = 0
     fix_type: int = 0  # 0-1: no fix, 2: 2D fix, 3: 3D fix
 
@@ -536,6 +580,7 @@ class GPSInfo:
 @dataclass
 class BatteryInfo:
     """Battery status information."""
+
     id: int = 0
     voltage: float = 0.0  # Volts
     current: float = 0.0  # Amperes
@@ -552,6 +597,7 @@ class BatteryInfo:
 @dataclass
 class DroneInfo:
     """Static vehicle information."""
+
     hardware_uuid: str = ""
     legacy_uuid: str = ""
     vendor_id: int = 0
@@ -564,6 +610,7 @@ class DroneInfo:
 @dataclass
 class FlightInfo:
     """Flight timing information."""
+
     time_since_boot_ms: int = 0
     flight_id: str = ""
     time_since_arm_ms: int = 0
@@ -578,6 +625,7 @@ class DroneState:
     This provides a clean interface to access all vehicle telemetry through
     organized properties.
     """
+
     heading: float = 0.0  # degrees, 0 = North
     velocity: VectorNED = field(default_factory=VectorNED)
     attitude: Attitude = field(default_factory=Attitude)
@@ -594,7 +642,9 @@ class DroneState:
     @property
     def position(self) -> Coordinate:
         """Current position as a Coordinate."""
-        return Coordinate(self.latitude, self.longitude, self.relative_altitude)
+        return Coordinate(
+            self.latitude, self.longitude, self.relative_altitude
+        )
 
     @property
     def speed(self) -> float:
@@ -614,6 +664,7 @@ class Waypoint:
 
     Includes position, speed, and hold time configuration.
     """
+
     coordinate: Coordinate
     speed: float = 5.0  # m/s
     hold_time: float = 0.0  # seconds to hold at waypoint
@@ -624,7 +675,9 @@ class Waypoint:
         return f"Waypoint({self.coordinate}, speed={self.speed}m/s)"
 
 
-def read_waypoints_from_plan(path: str, default_speed: float = 5.0) -> List[Waypoint]:
+def read_waypoints_from_plan(
+    path: str, default_speed: float = 5.0
+) -> List[Waypoint]:
     """
     Read waypoints from a QGroundControl .plan file.
 
@@ -660,9 +713,8 @@ def read_waypoints_from_plan(path: str, default_speed: float = 5.0) -> List[Wayp
             waypoint = Waypoint(
                 coordinate=Coordinate(lat, lon, alt),
                 speed=current_speed,
-                hold_time=hold_time
+                hold_time=hold_time,
             )
             waypoints.append(waypoint)
 
     return waypoints
-

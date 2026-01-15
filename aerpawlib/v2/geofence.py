@@ -6,6 +6,7 @@ checking if points are inside polygons, and detecting line segment intersections
 
 Uses the Shapely library for reliable geometric operations.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,9 +18,11 @@ from shapely.geometry import Point, Polygon as ShapelyPolygon, LineString
 from shapely.ops import nearest_points
 
 from .types import Coordinate
+from .exceptions import GeofenceError, GeofenceReadError, InvalidPolygonError
 
 # Use modular logging system
 from .logging import get_logger, LogComponent
+
 logger = get_logger(LogComponent.GEOFENCE)
 
 
@@ -32,15 +35,20 @@ class GeofencePoint:
         longitude: Longitude in degrees (-180 to 180)
         latitude: Latitude in degrees (-90 to 90)
     """
+
     longitude: float
     latitude: float
 
     def __post_init__(self) -> None:
         """Validate coordinates are within valid ranges."""
         if not -180 <= self.longitude <= 180:
-            raise ValueError(f"Longitude must be between -180 and 180, got {self.longitude}")
+            raise ValueError(
+                f"Longitude must be between -180 and 180, got {self.longitude}"
+            )
         if not -90 <= self.latitude <= 90:
-            raise ValueError(f"Latitude must be between -90 and 90, got {self.latitude}")
+            raise ValueError(
+                f"Latitude must be between -90 and 90, got {self.latitude}"
+            )
 
     @property
     def lon(self) -> float:
@@ -55,9 +63,7 @@ class GeofencePoint:
     def to_coordinate(self, altitude: float = 0.0) -> Coordinate:
         """Convert to a Coordinate with the given altitude."""
         return Coordinate(
-            latitude=self.latitude,
-            longitude=self.longitude,
-            altitude=altitude
+            latitude=self.latitude, longitude=self.longitude, altitude=altitude
         )
 
     def to_shapely(self) -> Point:
@@ -65,141 +71,14 @@ class GeofencePoint:
         return Point(self.longitude, self.latitude)
 
     def __repr__(self) -> str:
-        return f"GeofencePoint(lon={self.longitude:.6f}, lat={self.latitude:.6f})"
+        return (
+            f"GeofencePoint(lon={self.longitude:.6f}, lat={self.latitude:.6f})"
+        )
 
 
 # Type aliases
 Polygon = Sequence[GeofencePoint]
 PointLike = Union[Coordinate, GeofencePoint]
-
-
-class GeofenceError(Exception):
-    """Base exception for geofence-related errors."""
-    pass
-
-
-class GeofenceReadError(GeofenceError):
-    """Raised when reading a geofence file fails."""
-    pass
-
-
-class InvalidPolygonError(GeofenceError):
-    """Raised when a polygon is invalid (e.g., too few points)."""
-    pass
-
-
-def _to_shapely_point(point: PointLike) -> Point:
-    """Convert a PointLike to a Shapely Point."""
-    if hasattr(point, 'lon') and hasattr(point, 'lat'):
-        return Point(point.lon, point.lat)
-    if hasattr(point, 'longitude') and hasattr(point, 'latitude'):
-        return Point(point.longitude, point.latitude)
-    raise TypeError(f"Cannot convert {type(point).__name__} to Shapely Point")
-
-
-def _to_shapely_polygon(polygon: Polygon) -> ShapelyPolygon:
-    """Convert a sequence of GeofencePoints to a Shapely Polygon."""
-    if len(polygon) < 3:
-        raise InvalidPolygonError(
-            f"Polygon must have at least 3 vertices, got {len(polygon)}"
-        )
-    coords = [(p.longitude, p.latitude) for p in polygon]
-    return ShapelyPolygon(coords)
-
-
-def read_geofence(file_path: str | Path) -> List[GeofencePoint]:
-    """
-    Read a geofence from a KML file.
-
-    Args:
-        file_path: Path to the KML file containing the geofence polygon.
-
-    Returns:
-        A list of GeofencePoint objects representing the polygon vertices.
-
-    Raises:
-        GeofenceReadError: If the file cannot be read or parsed.
-        FileNotFoundError: If the file does not exist.
-
-    Example:
-        >>> geofence = read_geofence("boundary.kml")
-        >>> print(f"Geofence has {len(geofence)} vertices")
-    """
-    path = Path(file_path)
-
-    if not path.exists():
-        raise FileNotFoundError(f"Geofence file not found: {path}")
-
-    try:
-        with path.open("rb") as f:
-            root = parser.fromstring(f.read())
-    except Exception as e:
-        raise GeofenceReadError(f"Failed to parse KML file: {e}") from e
-
-    try:
-        coordinates_string = (
-            root.Document.Placemark.Polygon.outerBoundaryIs.LinearRing.coordinates.text
-        )
-    except AttributeError as e:
-        raise GeofenceReadError(
-            "KML file does not contain expected polygon structure. "
-            "Expected: Document/Placemark/Polygon/outerBoundaryIs/LinearRing/coordinates"
-        ) from e
-
-    if not coordinates_string or not coordinates_string.strip():
-        raise GeofenceReadError("KML file contains empty coordinates")
-
-    coordinates_list = coordinates_string.split()
-
-    polygon: List[GeofencePoint] = []
-    for i, coord_str in enumerate(coordinates_list):
-        parts = coord_str.split(",")
-        if len(parts) < 2:
-            raise GeofenceReadError(
-                f"Invalid coordinate format at index {i}: '{coord_str}'. "
-                "Expected 'longitude,latitude' or 'longitude,latitude,altitude'"
-            )
-        try:
-            point = GeofencePoint(
-                longitude=float(parts[0]),
-                latitude=float(parts[1])
-            )
-            polygon.append(point)
-        except ValueError as e:
-            raise GeofenceReadError(
-                f"Invalid coordinate values at index {i}: '{coord_str}'"
-            ) from e
-
-    if len(polygon) < 3:
-        raise InvalidPolygonError(
-            f"Polygon must have at least 3 vertices, got {len(polygon)}"
-        )
-
-    logger.debug(f"Loaded geofence with {len(polygon)} vertices from {path}")
-    return polygon
-
-
-def validate_polygon(polygon: Polygon) -> None:
-    """
-    Validate that a polygon is valid for geofence operations.
-
-    Args:
-        polygon: The polygon to validate
-
-    Raises:
-        InvalidPolygonError: If the polygon is invalid
-    """
-    if len(polygon) < 3:
-        raise InvalidPolygonError(
-            f"Polygon must have at least 3 vertices, got {len(polygon)}"
-        )
-
-    # Also validate with Shapely
-    shapely_poly = _to_shapely_polygon(polygon)
-    if not shapely_poly.is_valid:
-        raise InvalidPolygonError(
-            f"Polygon is geometrically invalid: {shapely_poly.is_valid}"
-        )
 
 
 def is_inside_polygon(point: PointLike, polygon: Polygon) -> bool:
@@ -229,7 +108,9 @@ def is_inside_polygon(point: PointLike, polygon: Polygon) -> bool:
 
     # contains() returns True if point is strictly inside
     # We also check touches() for points on the boundary
-    return shapely_poly.contains(shapely_point) or shapely_poly.touches(shapely_point)
+    return shapely_poly.contains(shapely_point) or shapely_poly.touches(
+        shapely_point
+    )
 
 
 def is_on_polygon_boundary(point: PointLike, polygon: Polygon) -> bool:
@@ -249,10 +130,7 @@ def is_on_polygon_boundary(point: PointLike, polygon: Polygon) -> bool:
 
 
 def segments_intersect(
-    p1: PointLike,
-    q1: PointLike,
-    p2: PointLike,
-    q2: PointLike
+    p1: PointLike, q1: PointLike, p2: PointLike, q2: PointLike
 ) -> bool:
     """
     Check if line segment p1-q1 intersects with segment p2-q2.
@@ -276,24 +154,24 @@ def segments_intersect(
         >>> if segments_intersect(start, end, edge_start, edge_end):
         ...     print("Path crosses geofence!")
     """
-    line1 = LineString([
-        (_to_shapely_point(p1).x, _to_shapely_point(p1).y),
-        (_to_shapely_point(q1).x, _to_shapely_point(q1).y)
-    ])
-    line2 = LineString([
-        (_to_shapely_point(p2).x, _to_shapely_point(p2).y),
-        (_to_shapely_point(q2).x, _to_shapely_point(q2).y)
-    ])
+    line1 = LineString(
+        [
+            (_to_shapely_point(p1).x, _to_shapely_point(p1).y),
+            (_to_shapely_point(q1).x, _to_shapely_point(q1).y),
+        ]
+    )
+    line2 = LineString(
+        [
+            (_to_shapely_point(p2).x, _to_shapely_point(p2).y),
+            (_to_shapely_point(q2).x, _to_shapely_point(q2).y),
+        ]
+    )
 
     return line1.intersects(line2)
 
 
 def path_crosses_polygon(
-    start: PointLike,
-    end: PointLike,
-    polygon: Polygon,
-    *,
-    closed: bool = True
+    start: PointLike, end: PointLike, polygon: Polygon, *, closed: bool = True
 ) -> bool:
     """
     Check if a path from start to end crosses any edge of a polygon.
@@ -319,21 +197,25 @@ def path_crosses_polygon(
         >>> if path_crosses_polygon(start, target, geofence):
         ...     print("Path would cross geofence boundary!")
     """
-    path = LineString([
-        (_to_shapely_point(start).x, _to_shapely_point(start).y),
-        (_to_shapely_point(end).x, _to_shapely_point(end).y)
-    ])
+    path = LineString(
+        [
+            (_to_shapely_point(start).x, _to_shapely_point(start).y),
+            (_to_shapely_point(end).x, _to_shapely_point(end).y),
+        ]
+    )
     shapely_poly = _to_shapely_polygon(polygon)
 
     # Check if path crosses the polygon boundary
-    return path.crosses(shapely_poly.boundary) or path.intersects(shapely_poly.boundary)
+    return path.crosses(shapely_poly.boundary) or path.intersects(
+        shapely_poly.boundary
+    )
 
 
 def is_path_valid(
     start: PointLike,
     end: PointLike,
     include_fence: Polygon,
-    exclude_fences: Sequence[Polygon] = ()
+    exclude_fences: Sequence[Polygon] = (),
 ) -> bool:
     """
     Check if a path is valid given inclusion and exclusion geofences.
@@ -354,10 +236,12 @@ def is_path_valid(
         True if the path is valid, False otherwise.
     """
     # Create path as LineString
-    path = LineString([
-        (_to_shapely_point(start).x, _to_shapely_point(start).y),
-        (_to_shapely_point(end).x, _to_shapely_point(end).y)
-    ])
+    path = LineString(
+        [
+            (_to_shapely_point(start).x, _to_shapely_point(start).y),
+            (_to_shapely_point(end).x, _to_shapely_point(end).y),
+        ]
+    )
 
     # Create include polygon
     include_poly = _to_shapely_polygon(include_fence)
@@ -433,8 +317,7 @@ def polygon_centroid(polygon: Polygon) -> GeofencePoint:
 
 
 def closest_point_on_polygon(
-    point: PointLike,
-    polygon: Polygon
+    point: PointLike, polygon: Polygon
 ) -> GeofencePoint:
     """
     Find the closest point on a polygon boundary to a given point.
@@ -519,10 +402,14 @@ def buffer_polygon(polygon: Polygon, distance: float) -> List[GeofencePoint]:
         return []
 
     coords = list(buffered.exterior.coords)
-    return [GeofencePoint(longitude=x, latitude=y) for x, y in coords[:-1]]  # Exclude closing point
+    return [
+        GeofencePoint(longitude=x, latitude=y) for x, y in coords[:-1]
+    ]  # Exclude closing point
 
 
-def simplify_polygon(polygon: Polygon, tolerance: float = 0.0001) -> List[GeofencePoint]:
+def simplify_polygon(
+    polygon: Polygon, tolerance: float = 0.0001
+) -> List[GeofencePoint]:
     """
     Simplify a polygon by removing vertices while preserving shape.
 
@@ -572,7 +459,9 @@ def polygons_overlap(polygon1: Polygon, polygon2: Polygon) -> bool:
     return poly1.intersects(poly2)
 
 
-def polygon_intersection(polygon1: Polygon, polygon2: Polygon) -> Optional[List[GeofencePoint]]:
+def polygon_intersection(
+    polygon1: Polygon, polygon2: Polygon
+) -> Optional[List[GeofencePoint]]:
     """
     Calculate the intersection of two polygons.
 
@@ -591,12 +480,108 @@ def polygon_intersection(polygon1: Polygon, polygon2: Polygon) -> Optional[List[
     if intersection.is_empty:
         return None
 
-    if intersection.geom_type != 'Polygon':
+    if intersection.geom_type != "Polygon":
         # Could be MultiPolygon, LineString, etc.
         return None
 
     coords = list(intersection.exterior.coords)
     return [GeofencePoint(longitude=x, latitude=y) for x, y in coords[:-1]]
+
+
+def _to_shapely_point(point: PointLike) -> Point:
+    """Internal helper to convert PointLike to Shapely Point."""
+    if isinstance(point, Coordinate):
+        return Point(point.longitude, point.latitude)
+    elif isinstance(point, GeofencePoint):
+        return Point(point.longitude, point.latitude)
+    else:
+        raise TypeError(
+            f"Expected Coordinate or GeofencePoint, got {type(point)}"
+        )
+
+
+def _to_shapely_polygon(polygon: Polygon) -> ShapelyPolygon:
+    """Internal helper to convert Polygon to Shapely Polygon."""
+    if len(polygon) < 3:
+        raise InvalidPolygonError("Polygon must have at least 3 vertices")
+    return ShapelyPolygon([(p.longitude, p.latitude) for p in polygon])
+
+
+def validate_polygon(polygon: Polygon) -> None:
+    """
+    Validate that a polygon is a valid geometric shape.
+
+    Args:
+        polygon: A sequence of GeofencePoint
+
+    Raises:
+        InvalidPolygonError: If the polygon is invalid.
+    """
+    if len(polygon) < 3:
+        raise InvalidPolygonError("Polygon must have at least 3 vertices")
+
+    try:
+        poly = _to_shapely_polygon(polygon)
+        if not poly.is_valid:
+            raise InvalidPolygonError(
+                "Polygon is not a valid geometric shape (self-intersecting?)"
+            )
+    except Exception as e:
+        if isinstance(e, InvalidPolygonError):
+            raise
+        raise InvalidPolygonError(f"Geometric validation failed: {e}")
+
+
+def read_geofence(file_path: Union[str, Path]) -> List[GeofencePoint]:
+    """
+    Read a geofence from a KML file.
+
+    Args:
+        file_path: Path to the KML file
+
+    Returns:
+        A list of GeofencePoint defining the boundary.
+
+    Raises:
+        GeofenceReadError: If the file cannot be read or parsed.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise GeofenceReadError(f"KML file not found: {file_path}")
+
+    try:
+        with open(path, "rb") as f:
+            root = parser.parse(f).getroot()
+
+        # Look for LinearRing or Polygon coordinates
+        namespace = {"kml": "http://www.opengis.net/kml/2.2"}
+        coords_elements = root.xpath("//kml:coordinates", namespaces=namespace)
+
+        if not coords_elements:
+            raise GeofenceReadError("No coordinates found in KML file")
+
+        # Extract coordinates from the first coordinates element
+        # KML coordinates are typically: lon,lat,alt lon,lat,alt ...
+        coords_str = str(coords_elements[0].text).strip()
+        points = []
+        for pair in coords_str.split():
+            parts = pair.split(",")
+            if len(parts) >= 2:
+                points.append(
+                    GeofencePoint(
+                        longitude=float(parts[0]), latitude=float(parts[1])
+                    )
+                )
+
+        if len(points) < 3:
+            raise GeofenceReadError(
+                f"Geofence must have at least 3 points, found {len(points)}"
+            )
+
+        return points
+
+    except Exception as e:
+        raise GeofenceReadError(f"Failed to parse KML: {e}")
 
 
 __all__ = [
@@ -628,4 +613,3 @@ __all__ = [
     "polygons_overlap",
     "polygon_intersection",
 ]
-
