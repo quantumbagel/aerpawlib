@@ -10,6 +10,7 @@ so existing catch blocks will continue to work.
 
 @author: Code review cleanup
 """
+
 from typing import Optional, Any
 
 
@@ -25,7 +26,9 @@ class AerpawlibError(Exception):
         original_error: The underlying exception that caused this error, if any
     """
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(
+        self, message: str, original_error: Optional[Exception] = None
+    ):
         self.message = message
         self.original_error = original_error
         super().__init__(message)
@@ -40,8 +43,10 @@ class AerpawlibError(Exception):
 # Connection Errors
 # =============================================================================
 
+
 class ConnectionError(AerpawlibError):
     """Base class for connection-related errors."""
+
     pass
 
 
@@ -50,7 +55,9 @@ class ConnectionTimeoutError(ConnectionError):
 
     def __init__(self, timeout_seconds: float, message: Optional[str] = None):
         self.timeout_seconds = timeout_seconds
-        msg = message or f"Connection timed out after {timeout_seconds} seconds"
+        msg = (
+            message or f"Connection timed out after {timeout_seconds} seconds"
+        )
         super().__init__(msg)
 
 
@@ -74,64 +81,98 @@ class MAVSDKNotInstalledError(ConnectionError):
 # Command Errors
 # =============================================================================
 
+
 class CommandError(AerpawlibError):
     """Base class for command execution errors."""
+
     pass
 
 
 class ArmError(CommandError):
     """Raised when arming the vehicle fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Failed to arm vehicle: {reason}", original_error)
 
 
 class DisarmError(CommandError):
     """Raised when disarming the vehicle fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Failed to disarm vehicle: {reason}", original_error)
 
 
 class TakeoffError(CommandError):
     """Raised when takeoff fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Takeoff failed: {reason}", original_error)
 
 
 class LandingError(CommandError):
     """Raised when landing fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Landing failed: {reason}", original_error)
 
 
 class NavigationError(CommandError):
     """Raised when navigation/goto command fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Navigation failed: {reason}", original_error)
 
 
 class VelocityError(CommandError):
     """Raised when velocity command fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Set velocity failed: {reason}", original_error)
 
 
 class HeadingError(CommandError):
     """Raised when set heading command fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Set heading failed: {reason}", original_error)
 
 
 class RTLError(CommandError):
     """Raised when return-to-launch fails."""
 
-    def __init__(self, reason: str = "Unknown", original_error: Optional[Exception] = None):
+    def __init__(
+        self,
+        reason: str = "Unknown",
+        original_error: Optional[Exception] = None,
+    ):
         super().__init__(f"Return to launch failed: {reason}", original_error)
 
 
@@ -139,8 +180,10 @@ class RTLError(CommandError):
 # State Errors
 # =============================================================================
 
+
 class StateError(AerpawlibError):
     """Base class for vehicle state errors."""
+
     pass
 
 
@@ -169,8 +212,10 @@ class AbortedError(StateError):
 # Validation Errors
 # =============================================================================
 
+
 class ValidationError(AerpawlibError):
     """Base class for input validation errors."""
+
     pass
 
 
@@ -214,6 +259,7 @@ class InvalidSpeedError(ValidationError):
 # Feature Errors
 # =============================================================================
 
+
 class NotImplementedForVehicleError(AerpawlibError):
     """Raised when a feature is not available for a vehicle type."""
 
@@ -229,8 +275,10 @@ class NotImplementedForVehicleError(AerpawlibError):
 # State Machine Errors
 # =============================================================================
 
+
 class StateMachineError(AerpawlibError):
     """Base class for state machine errors."""
+
     pass
 
 
@@ -271,4 +319,3 @@ class InvalidStateNameError(StateMachineError):
 
     def __init__(self):
         super().__init__("State name cannot be empty string")
-

@@ -14,12 +14,14 @@ import zmq.asyncio
 
 from .vehicle import Vehicle
 
+
 class Runner:
     """
     Base execution framework -- generally, this should only be used to build
     new runners. Only exposes the base functions needed to interface with
     aerpawlib's runner.
     """
+
     async def run(self, _: Vehicle):
         """
         Run the script that's been loaded in -- this is what implements the
@@ -30,7 +32,7 @@ class Runner:
         `BasicRunner`), you should avoid overriding this.
         """
         pass
-    
+
     def initialize_args(self, _: List[str]):
         """
         Can be overridden to parse and handle extra command line arguments
@@ -41,7 +43,7 @@ class Runner:
         This is expected to be overridden by the user script if it is used.
         """
         pass
-    
+
     def cleanup(self):
         """
         Any additional user-provided functionality that is called when the
@@ -51,7 +53,9 @@ class Runner:
         """
         pass
 
+
 _Runnable = Callable[[Runner, Vehicle], str]
+
 
 def entrypoint(func):
     """
@@ -63,6 +67,7 @@ def entrypoint(func):
     func._entrypoint = True
     return func
 
+
 class BasicRunner(Runner):
     """
     BasicRunners have a single entry point (specified by `entrypoint`) that is
@@ -72,6 +77,7 @@ class BasicRunner(Runner):
     For an example of a minimum viable `BasicRunner`, check out
     `examples/basic_runner.py`
     """
+
     def _build(self):
         for _, method in inspect.getmembers(self):
             if not inspect.ismethod(method):
@@ -86,9 +92,11 @@ class BasicRunner(Runner):
         else:
             raise Exception("No @entrypoint declared")
 
+
 class _StateType(Enum):
     STANDARD = auto()
     TIMED = auto()
+
 
 class _State:
     _name: str
@@ -97,12 +105,13 @@ class _State:
     def __init__(self, func: _Runnable, name: str):
         self._name = name
         self._func = func
-    
+
     async def run(self, runner: Runner, vehicle: Vehicle) -> str:
         if self._func._state_type == _StateType.STANDARD:
             return await self._func.__func__(runner, vehicle)
         elif self._func._state_type == _StateType.TIMED:
             running = True
+
             async def _bg():
                 nonlocal running
                 last_state = ""
@@ -112,15 +121,17 @@ class _State:
                         running = False
                     await asyncio.sleep(_STATE_DELAY)
                 return last_state
+
             r = asyncio.ensure_future(_bg())
             # order here is important and stops a race condition
             await asyncio.sleep(self._func._state_duration)
             running = False
-            next_state = await r 
+            next_state = await r
             return next_state
         return ""
 
-def state(name: str, first: bool=False):
+
+def state(name: str, first: bool = False):
     """
     Decorator used to specify a state used by a `StateMachine`. Functions
     decorated using this are expected to be given a name and return a string
@@ -130,16 +141,19 @@ def state(name: str, first: bool=False):
     The function decorated by this is expected to be `async`
     """
     if name == "":
-        raise Exception("state name can't be \"\"")
+        raise Exception('state name can\'t be ""')
+
     def decorator(func):
         func._is_state = True
         func._state_name = name
         func._state_first = first
         func._state_type = _StateType.STANDARD
         return func
+
     return decorator
 
-def timed_state(name: str, duration: float, loop=False, first: bool=False):
+
+def timed_state(name: str, duration: float, loop=False, first: bool = False):
     """
     Timed state. Will wait `duration` seconds before transitioning to the next
     state. If `loop` is true, the decorated function will be continuously
@@ -151,6 +165,7 @@ def timed_state(name: str, duration: float, loop=False, first: bool=False):
 
     The function decorated by this is expected to be `async`
     """
+
     def decorator(func):
         func._is_state = True
         func._state_name = name
@@ -159,17 +174,22 @@ def timed_state(name: str, duration: float, loop=False, first: bool=False):
         func._state_duration = duration
         func._state_loop = loop
         return func
+
     return decorator
+
 
 # TODO do something w/ this? why not just export all states perhaps
 def expose_zmq(name: str):
     if name == "":
         raise Exception("state must be exported with some binding")
+
     def decorator(func):
         func._is_exposed_zmq = True
         func._zmq_name = name
         return func
+
     return decorator
+
 
 def expose_field_zmq(name: str):
     """
@@ -179,13 +199,17 @@ def expose_field_zmq(name: str):
     # expose a function as a thing that can be called to get a field w/ zmq
     if name == "":
         raise Exception("field must be exposed with some name")
+
     def decorator(func):
         func._is_exposed_field_zmq = True
         func._zmq_name = name
         return func
+
     return decorator
 
+
 _BackgroundTask = Callable[[Runner, Vehicle], None]
+
 
 def background(func):
     """
@@ -202,14 +226,16 @@ def background(func):
     func._is_background = True
     return func
 
+
 _InitializationTask = Callable[[Runner, Vehicle], None]
+
 
 def at_init(func):
     """
     Designate a function to be run at vehicle initialization and before vehicle
     arming (or at least the prompt to arm). The vehicle will not be armable
     until after all `at_init` functions finish executing.
-    
+
     The function designated should have a signature that accepts a Vehicle.
 
     The function decorated by this is expected to be `async`. If there are
@@ -219,7 +245,9 @@ def at_init(func):
     func._run_at_init = True
     return func
 
-_STATE_DELAY = 0.01 # s between each time the state update is called
+
+_STATE_DELAY = 0.01  # s between each time the state update is called
+
 
 class StateMachine(Runner):
     """
@@ -251,7 +279,9 @@ class StateMachine(Runner):
             if not inspect.ismethod(method):
                 continue
             if hasattr(method, "_is_state"):
-                self._states[method._state_name] = _State(method, method._state_name)
+                self._states[method._state_name] = _State(
+                    method, method._state_name
+                )
                 if method._state_first and not hasattr(self, "_entrypoint"):
                     self._entrypoint = method._state_name
                 elif method._state_first and hasattr(self, "_entrypoint"):
@@ -262,12 +292,14 @@ class StateMachine(Runner):
                 self._initialization_tasks.append(method)
         if not self._entrypoint:
             raise Exception("There is no initial state")
-    
+
     async def _start_background_tasks(self, vehicle: Vehicle):
         for task in self._background_tasks:
+
             async def _task_runner(t=task):
                 while self._running:
                     await t.__func__(self, vehicle)
+
             asyncio.ensure_future(_task_runner())
 
     async def run(self, vehicle: Vehicle, build_before_running=True):
@@ -278,28 +310,31 @@ class StateMachine(Runner):
         self._override_next_state_transition = False
         self._next_state_overr = ""
         self._running = True
-        
 
         if len(self._initialization_tasks) != 0:
-            await asyncio.wait({f(vehicle) for f in self._initialization_tasks})
-        
+            await asyncio.wait(
+                {f(vehicle) for f in self._initialization_tasks}
+            )
+
         await self._start_background_tasks(vehicle)
-        
-        await asyncio.sleep(1) # wait for background tasks to start :p
-        
+
+        await asyncio.sleep(1)  # wait for background tasks to start :p
+
         while self._running:
             if self._current_state not in self._states:
                 print(self._current_state)
                 print(self._states)
                 raise Exception("Illegal state")
-            
-            next_state = await self._states[self._current_state].run(self, vehicle)
+
+            next_state = await self._states[self._current_state].run(
+                self, vehicle
+            )
             if self._override_next_state_transition:
                 self._override_next_state_transition = False
                 self._current_state = self._next_state_overr
             else:
                 self._current_state = next_state
-            
+
             if self._current_state is None:
                 self.stop()
             await asyncio.sleep(_STATE_DELAY)
@@ -313,6 +348,7 @@ class StateMachine(Runner):
         """
         self._running = False
 
+
 class ZmqStateMachine(StateMachine):
     """
     A `ZmqStateMachine` is a more complex state machine that interacts with zmq
@@ -323,6 +359,7 @@ class ZmqStateMachine(StateMachine):
     For examples of how to structure programs using this, check out
     `examples/zmq_preplanned_orbit` and `examples/zmq_runner`.
     """
+
     _exported_states: Dict[str, _State]
 
     def _build(self):
@@ -333,26 +370,34 @@ class ZmqStateMachine(StateMachine):
             if not inspect.ismethod(method):
                 continue
             if hasattr(method, "_is_exposed_zmq"):
-                self._exported_states[method._zmq_name] = _State(method, method._zmq_name)
+                self._exported_states[method._zmq_name] = _State(
+                    method, method._zmq_name
+                )
             elif hasattr(method, "_is_exposed_field_zmq"):
                 self._exported_fields[method._zmq_name] = method
 
     _zmq_identifier: str
     _zmq_proxy_server: str
 
-    def _initialize_zmq_bindings(self, vehicle_identifier: str, proxy_server_addr: str):
+    def _initialize_zmq_bindings(
+        self, vehicle_identifier: str, proxy_server_addr: str
+    ):
         self._zmq_identifier = vehicle_identifier
         self._zmq_proxy_server = proxy_server_addr
         self._zmq_context = zmq.asyncio.Context()
 
     @background
     async def _zmg_bg_sub(self, vehicle: Vehicle):
-        socket = zmq.asyncio.Socket(context=self._zmq_context, io_loop=asyncio.get_event_loop(), socket_type=zmq.SUB)
+        socket = zmq.asyncio.Socket(
+            context=self._zmq_context,
+            io_loop=asyncio.get_event_loop(),
+            socket_type=zmq.SUB,
+        )
         socket.connect(f"tcp://{self._zmq_proxy_server}:{ZMQ_PROXY_OUT_PORT}")
 
         socket.setsockopt_string(zmq.SUBSCRIBE, "")
         self._zmq_messages_handling = asyncio.Queue()
-        self._zmq_received_fields = {} # indexed by [identifier][field]
+        self._zmq_received_fields = {}  # indexed by [identifier][field]
 
         # print("starting sub")
         while self._running:
@@ -379,12 +424,16 @@ class ZmqStateMachine(StateMachine):
             value = message["value"]
             msg_from = message["from"]
             self._zmq_received_fields[msg_from][field] = value
-        
+
     @background
     async def _zmq_bg_pub(self, _: Vehicle):
         # pub side of things is just sending from a queue
         self._zmq_messages_sending = asyncio.Queue()
-        socket = zmq.asyncio.Socket(context=self._zmq_context, io_loop=asyncio.get_event_loop(), socket_type=zmq.PUB)
+        socket = zmq.asyncio.Socket(
+            context=self._zmq_context,
+            io_loop=asyncio.get_event_loop(),
+            socket_type=zmq.PUB,
+        )
         socket.connect(f"tcp://{self._zmq_proxy_server}:{ZMQ_PROXY_IN_PORT}")
         while self._running:
             msg_sending = await self._zmq_messages_sending.get()
@@ -402,8 +451,10 @@ class ZmqStateMachine(StateMachine):
         # self._background_tasks.extend([self._zmq_bg_pub, self._zmq_bg_sub])
 
         if None in [self._zmq_identifier, self._zmq_proxy_server]:
-            raise Exception("initialize_zmq_bindings must be used w/ a zmq runner")
-        
+            raise Exception(
+                "initialize_zmq_bindings must be used w/ a zmq runner"
+            )
+
         await super().run(vehicle, build_before_running=False)
 
     async def transition_runner(self, identifier: str, state: str):
@@ -414,11 +465,11 @@ class ZmqStateMachine(StateMachine):
         # transition a runner via zmq that is not this one
         # exposed to scripts via runner
         transition_obj = {
-                "msg_type": ZMQ_TYPE_TRANSITION,
-                "from": self._zmq_identifier,
-                "identifier": identifier,
-                "next_state": state,
-                }
+            "msg_type": ZMQ_TYPE_TRANSITION,
+            "from": self._zmq_identifier,
+            "identifier": identifier,
+            "next_state": state,
+        }
         await self._zmq_messages_sending.put(transition_obj)
 
     async def query_field(self, identifier: str, field: str):
@@ -435,11 +486,11 @@ class ZmqStateMachine(StateMachine):
             self._zmq_received_fields[identifier] = {}
         self._zmq_received_fields[identifier][field] = None
         query_obj = {
-                "msg_type": ZMQ_TYPE_FIELD_REQUEST,
-                "from": self._zmq_identifier,
-                "identifier": identifier,
-                "field": field,
-                }
+            "msg_type": ZMQ_TYPE_FIELD_REQUEST,
+            "from": self._zmq_identifier,
+            "identifier": identifier,
+            "field": field,
+        }
         await self._zmq_messages_sending.put(query_obj)
         while self._zmq_received_fields[identifier][field] == None:
             await asyncio.sleep(0.01)
@@ -447,13 +498,14 @@ class ZmqStateMachine(StateMachine):
 
     async def _reply_queried_field(self, identifier: str, field: str, value):
         reply_obj = {
-                "msg_type": ZMQ_TYPE_FIELD_CALLBACK,
-                "from": self._zmq_identifier,
-                "identifier": identifier,
-                "field": field,
-                "value": value,
-                }
+            "msg_type": ZMQ_TYPE_FIELD_CALLBACK,
+            "from": self._zmq_identifier,
+            "identifier": identifier,
+            "field": field,
+            "value": value,
+        }
         await self._zmq_messages_sending.put(reply_obj)
+
 
 # helper functions for working with asyncio code
 

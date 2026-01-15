@@ -17,7 +17,12 @@ OEO_MSG_SEV_INFO = "INFO"
 OEO_MSG_SEV_WARN = "WARNING"
 OEO_MSG_SEV_ERR = "ERROR"
 OEO_MSG_SEV_CRIT = "CRITICAL"
-_OEO_MSG_SEVS = [OEO_MSG_SEV_INFO, OEO_MSG_SEV_WARN, OEO_MSG_SEV_ERR, OEO_MSG_SEV_CRIT]
+_OEO_MSG_SEVS = [
+    OEO_MSG_SEV_INFO,
+    OEO_MSG_SEV_WARN,
+    OEO_MSG_SEV_ERR,
+    OEO_MSG_SEV_CRIT,
+]
 
 
 class AERPAW:
@@ -38,7 +43,9 @@ class AERPAW:
         hosting this experiment. Returns bool depending on success.
         """
         try:
-            requests.post(f"http://{self._cvm_addr}:{self._cvm_port}/ping", timeout=1)
+            requests.post(
+                f"http://{self._cvm_addr}:{self._cvm_port}/ping", timeout=1
+            )
         except requests.exceptions.RequestException:
             return False
         return True
@@ -47,7 +54,9 @@ class AERPAW:
         if self._connection_warning_displayed:
             return
         if not self._no_stdout:
-            print("[aerpawlib] INFO: the user script has attempted to use AERPAW platform functionality without being in the AERPAW environment")
+            print(
+                "[aerpawlib] INFO: the user script has attempted to use AERPAW platform functionality without being in the AERPAW environment"
+            )
         self._connection_warning_displayed = True
 
     def log_to_oeo(self, msg: str, severity: str = OEO_MSG_SEV_INFO):
@@ -63,9 +72,12 @@ class AERPAW:
 
         if severity not in _OEO_MSG_SEVS:
             raise Exception("severity provided for log_to_oeo not supported")
-        encoded = base64.urlsafe_b64encode(msg.encode('utf-8'))
+        encoded = base64.urlsafe_b64encode(msg.encode("utf-8"))
         try:
-            requests.post(f"http://{self._cvm_addr}:{self._cvm_port}/oeo_msg/{severity}/{encoded.decode('utf-8')}", timeout=3)
+            requests.post(
+                f"http://{self._cvm_addr}:{self._cvm_port}/oeo_msg/{severity}/{encoded.decode('utf-8')}",
+                timeout=3,
+            )
         except requests.exceptions.RequestException:
             if not self._no_stdout:
                 print("unable to send previous message to OEO.")
@@ -79,8 +91,12 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.post(f"http://{self._cvm_addr}:{self._cvm_port}/checkpoint/reset")
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.post(
+            f"http://{self._cvm_addr}:{self._cvm_port}/checkpoint/reset"
+        )
         if response.status_code != 200:
             raise Exception("error when resetting checkpoint server")
 
@@ -90,8 +106,12 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.post(self._checkpoint_build_request("bool", checkpoint_name))
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.post(
+            self._checkpoint_build_request("bool", checkpoint_name)
+        )
         if response.status_code != 200:
             raise Exception("error when posting to checkpoint server")
 
@@ -104,8 +124,12 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.get(self._checkpoint_build_request("bool", checkpoint_name))
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.get(
+            self._checkpoint_build_request("bool", checkpoint_name)
+        )
         if response.status_code != 200:
             raise Exception("error when getting from checkpoint server")
         response_content = response.content.decode()
@@ -113,7 +137,9 @@ class AERPAW:
             return True
         elif response_content == "False":
             return False
-        raise Exception(f"malformed content in response from server: {response_content}")
+        raise Exception(
+            f"malformed content in response from server: {response_content}"
+        )
 
     def checkpoint_increment_counter(self, counter_name: str):
         """
@@ -121,8 +147,12 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.post(self._checkpoint_build_request("int", counter_name))
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.post(
+            self._checkpoint_build_request("int", counter_name)
+        )
         if response.status_code != 200:
             raise Exception("error when posting to checkpoint server")
 
@@ -133,15 +163,21 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.get(self._checkpoint_build_request("int", counter_name))
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.get(
+            self._checkpoint_build_request("int", counter_name)
+        )
         if response.status_code != 200:
             raise Exception("error when getting from checkpoint server")
         response_content = response.content.decode()
         try:
             return int(response_content)
         except TypeError:
-            raise Exception(f"malformed content in response from server: {response_content}")
+            raise Exception(
+                f"malformed content in response from server: {response_content}"
+            )
 
     def checkpoint_set_string(self, string_name: str, value: str):
         """
@@ -150,8 +186,13 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.post(self._checkpoint_build_request("string", string_name) + f"?val={value}")
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.post(
+            self._checkpoint_build_request("string", string_name)
+            + f"?val={value}"
+        )
         if response.status_code != 200:
             raise Exception("error when posting to checkpoint server")
 
@@ -162,8 +203,12 @@ class AERPAW:
         """
         if not self._connected:
             self._display_connection_warning()
-            raise Exception("AERPAW checkpoint functionality only works in AERPAW environment")
-        response = requests.get(self._checkpoint_build_request("string", string_name))
+            raise Exception(
+                "AERPAW checkpoint functionality only works in AERPAW environment"
+            )
+        response = requests.get(
+            self._checkpoint_build_request("string", string_name)
+        )
         if response.status_code != 200:
             raise Exception("error when getting from checkpoint server")
         response_content = response.content.decode()

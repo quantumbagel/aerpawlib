@@ -18,7 +18,7 @@ warnings.warn(
     "Use 'from aerpawlib.v1.safetyChecker import ...' or "
     "'from aerpawlib.v2.safety_checker import ...' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 # Re-export everything from v1 for backward compatibility

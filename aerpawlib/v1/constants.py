@@ -99,4 +99,3 @@ MAX_GROUNDSPEED_M_S = 30.0
 
 # Minimum ground speed (m/s)
 MIN_GROUNDSPEED_M_S = 0.0
-

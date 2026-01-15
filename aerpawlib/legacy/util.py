@@ -1,11 +1,13 @@
 """
 Types and functions commonly used throughout the aerpawlib framework.
 """
+
 import json
 import math
 from typing import List, Tuple
 
 import collections
+
 collections.MutableMapping = collections.abc.MutableMapping
 import dronekit
 from pykml import parser
@@ -63,7 +65,7 @@ class VectorNED:
         if ignore_down:
             return math.hypot(self.north, self.east)
         else:
-            return math.sqrt(self.north ** 2 + self.east ** 2 + self.down ** 2)
+            return math.sqrt(self.north**2 + self.east**2 + self.down**2)
 
     def norm(self):
         """
@@ -80,12 +82,16 @@ class VectorNED:
     def __add__(self, o):
         if not isinstance(o, VectorNED):
             raise TypeError()
-        return VectorNED(self.north + o.north, self.east + o.east, self.down + o.down)
+        return VectorNED(
+            self.north + o.north, self.east + o.east, self.down + o.down
+        )
 
     def __sub__(self, o):
         if not isinstance(o, VectorNED):
             raise TypeError()
-        return VectorNED(self.north - o.north, self.east - o.east, self.down - o.down)
+        return VectorNED(
+            self.north - o.north, self.east - o.east, self.down - o.down
+        )
 
     def __mul__(self, o):
         if not (isinstance(o, float) or isinstance(o, int)):
@@ -95,7 +101,9 @@ class VectorNED:
     __rmul__ = __mul__
 
     def __str__(self) -> str:
-        return "(" + ",".join(map(str, [self.north, self.east, self.down])) + ")"
+        return (
+            "(" + ",".join(map(str, [self.north, self.east, self.down])) + ")"
+        )
 
 
 class Coordinate:
@@ -169,9 +177,9 @@ class Coordinate:
         d2r = math.pi / 180
         dlon = (other.lon - self.lon) * d2r
         dlat = (other.lat - self.lat) * d2r
-        a = math.pow(math.sin(dlat / 2), 2) + math.cos(self.lat * d2r) * math.cos(
-            other.lat * d2r
-        ) * math.pow(math.sin(dlon / 2), 2)
+        a = math.pow(math.sin(dlat / 2), 2) + math.cos(
+            self.lat * d2r
+        ) * math.cos(other.lat * d2r) * math.pow(math.sin(dlon / 2), 2)
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         d = 6367 * c
         return math.hypot(d * 1000, other.alt - self.alt)
@@ -238,7 +246,7 @@ class Coordinate:
             )
         else:
             raise TypeError()
-    
+
     def __str__(self):
         return f"({self.lat},{self.lon},{self.alt})"
 
@@ -295,7 +303,9 @@ def read_from_plan(
     return waypoints
 
 
-def get_location_from_waypoint(waypoint: Waypoint) -> dronekit.LocationGlobalRelative:
+def get_location_from_waypoint(
+    waypoint: Waypoint,
+) -> dronekit.LocationGlobalRelative:
     """
     Helper to get coordinates in dronekit's style from a `Waypoint`
 
@@ -304,7 +314,9 @@ def get_location_from_waypoint(waypoint: Waypoint) -> dronekit.LocationGlobalRel
     return dronekit.LocationGlobalRelative(*waypoint[1:4])
 
 
-def read_from_plan_complete(path: str, default_speed: float = _DEFAULT_WAYPOINT_SPEED):
+def read_from_plan_complete(
+    path: str, default_speed: float = _DEFAULT_WAYPOINT_SPEED
+):
     """
     Helper to read from a .plan file and gather all fields from each waypoint
 
@@ -349,7 +361,10 @@ def readGeofence(filePath):
     coordinates_list = coordinates_string.split()
     polygon = []
     for str in coordinates_list:
-        point = {"lon": float(str.split(",")[0]), "lat": float(str.split(",")[1])}
+        point = {
+            "lon": float(str.split(",")[0]),
+            "lat": float(str.split(",")[1]),
+        }
         polygon.append(point)
     return polygon
 

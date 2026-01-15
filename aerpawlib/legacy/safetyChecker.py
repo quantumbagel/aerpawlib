@@ -31,7 +31,11 @@ def serialize_request(request_function: str, params: list):
 # serialize a safety checker response
 def serialize_response(request_function: str, result: bool, message: str = ""):
     raw_msg = json.dumps(
-        {"request_function": request_function, "result": result, "message": message}
+        {
+            "request_function": request_function,
+            "result": result,
+            "message": message,
+        }
     )
     return serialize_msg(raw_msg)
 
@@ -196,7 +200,9 @@ class SafetyCheckerServer:
                     response = req_function(*params)
                 socket.send(response)
             except KeyError as e:
-                socket.send(f"Unimplemented function request <{function_name}>")
+                socket.send(
+                    f"Unimplemented function request <{function_name}>"
+                )
             except Exception as e:
                 socket.send(b"Unknown error!")
                 raise (e)
@@ -332,7 +338,10 @@ class SafetyCheckerServer:
         # Makes sure altitude is within regulations
         if self.vehicle_type == "copter":
             if takeoffAlt < self.min_alt or takeoffAlt > self.max_alt:
-                return (False, "Invalid takeoff altitude of %s m." % takeoffAlt)
+                return (
+                    False,
+                    "Invalid takeoff altitude of %s m." % takeoffAlt,
+                )
         # Save takeoff location for validating landing
         self.takeoff_location = Coordinate(currentLat, currentLon, alt=0)
         # Takeoff command is valid
@@ -359,7 +368,9 @@ class SafetyCheckerServer:
     ## Client Request Handlers ##
     #############################
     def serverStatusHandler(self, *_params):
-        msg = serialize_response(request_function=SERVER_STATUS_REQ, result=True)
+        msg = serialize_response(
+            request_function=SERVER_STATUS_REQ, result=True
+        )
         return msg
 
     def validateWaypointHandler(self, curLocJSON, nextLocJSON, *_params):
@@ -369,35 +380,47 @@ class SafetyCheckerServer:
             lat=curLocDict["lat"], lon=curLocDict["lon"], alt=curLocDict["alt"]
         )
         nextLoc = Coordinate(
-            lat=nextLocDict["lat"], lon=nextLocDict["lon"], alt=nextLocDict["alt"]
+            lat=nextLocDict["lat"],
+            lon=nextLocDict["lon"],
+            alt=nextLocDict["alt"],
         )
 
         result, message = self.validateWaypointCommand(curLoc, nextLoc)
         msg = serialize_response(
-            request_function=VALIDATE_WAYPOINT_REQ, result=result, message=message
+            request_function=VALIDATE_WAYPOINT_REQ,
+            result=result,
+            message=message,
         )
         return msg
 
     def validateChangeSpeedHandler(self, newSpeed, *_params):
         result, message = self.validateChangeSpeedCommand(newSpeed)
         msg = serialize_response(
-            request_function=VALIDATE_CHANGE_SPEED_REQ, result=result, message=message
+            request_function=VALIDATE_CHANGE_SPEED_REQ,
+            result=result,
+            message=message,
         )
         return msg
 
-    def validateTakeoffHandler(self, takeoffAlt, currentLat, currentLon, *_params):
+    def validateTakeoffHandler(
+        self, takeoffAlt, currentLat, currentLon, *_params
+    ):
         result, message = self.validateTakeoffCommand(
             takeoffAlt, currentLat, currentLon
         )
         msg = serialize_response(
-            request_function=VALIDATE_TAKEOFF_REQ, result=result, message=message
+            request_function=VALIDATE_TAKEOFF_REQ,
+            result=result,
+            message=message,
         )
         return msg
 
     def validateLandingHandler(self, currentLat, currentLon, *_params):
         result, message = self.validateLandingCommand(currentLat, currentLon)
         msg = serialize_response(
-            request_function=VALIDATE_LANDING_REQ, result=result, message=message
+            request_function=VALIDATE_LANDING_REQ,
+            result=result,
+            message=message,
         )
         return msg
 
@@ -407,7 +430,9 @@ if __name__ == "__main__":
         description="safetyChecker - Launch a safety checker server"
     )
     parser.add_argument(
-        "--port", help="Port for communication between client and server", required=True
+        "--port",
+        help="Port for communication between client and server",
+        required=True,
     )
     parser.add_argument(
         "--vehicle_config",
@@ -418,4 +443,3 @@ if __name__ == "__main__":
 
     # This call blocks
     server = SafetyCheckerServer(args.vehicle_config, server_port=args.port)
-

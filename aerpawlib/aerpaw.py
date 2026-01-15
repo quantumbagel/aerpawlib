@@ -18,7 +18,7 @@ warnings.warn(
     "Use 'from aerpawlib.v1.aerpaw import ...' or "
     "'from aerpawlib.v2.aerpaw import ...' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 # Re-export everything from v1 for backward compatibility

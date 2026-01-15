@@ -8,6 +8,3 @@ __author__ = "John Kesler"
 
 # Default to v1 API (MAVSDK-based, API compatible with legacy)
 from .v1 import *
-
-
-

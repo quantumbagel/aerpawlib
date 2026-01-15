@@ -5,20 +5,21 @@ Common patterns extracted to reduce code duplication and improve maintainability
 
 @author: Code review cleanup
 """
+
 import asyncio
 from typing import Callable, Optional, TypeVar, Any
 
 from .constants import POLLING_DELAY_S
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 async def wait_for_condition(
     condition: Callable[[], bool],
     timeout: Optional[float] = None,
     poll_interval: float = POLLING_DELAY_S,
-    timeout_message: str = "Operation timed out"
+    timeout_message: str = "Operation timed out",
 ) -> bool:
     """
     Wait for a condition to become true.
@@ -40,6 +41,7 @@ async def wait_for_condition(
         TimeoutError: If timeout is specified and exceeded
     """
     import time
+
     start_time = time.time()
 
     while not condition():
@@ -55,7 +57,7 @@ async def wait_for_value_change(
     target_value: T,
     timeout: Optional[float] = None,
     poll_interval: float = POLLING_DELAY_S,
-    timeout_message: str = "Timeout waiting for value change"
+    timeout_message: str = "Timeout waiting for value change",
 ) -> T:
     """
     Wait for a value to change to a specific target.
@@ -77,12 +79,14 @@ async def wait_for_value_change(
         lambda: getter() == target_value,
         timeout=timeout,
         poll_interval=poll_interval,
-        timeout_message=timeout_message
+        timeout_message=timeout_message,
     )
     return getter()
 
 
-def validate_tolerance(tolerance: float, param_name: str = "tolerance") -> float:
+def validate_tolerance(
+    tolerance: float, param_name: str = "tolerance"
+) -> float:
     """
     Validate a tolerance value is within acceptable bounds.
 
@@ -200,6 +204,7 @@ class ThreadSafeValue:
 
     def __init__(self, initial_value: Any = None):
         import threading
+
         self._value = initial_value
         self._lock = threading.Lock()
 
@@ -229,4 +234,3 @@ class ThreadSafeValue:
                 self._value = new_value
                 return True
             return False
-

@@ -7,6 +7,7 @@ backward compatibility with the original DroneKit-based interface.
 
 @author: Julian Reder (quantumbagel)
 """
+
 import asyncio
 import logging
 import math
@@ -19,6 +20,7 @@ try:
     from mavsdk.offboard import PositionNedYaw, VelocityNedYaw, OffboardError
     from mavsdk.action import ActionError
     from mavsdk.telemetry import FlightMode as MavFlightMode
+
     MAVSDK_AVAILABLE = True
 except ImportError:
     MAVSDK_AVAILABLE = False
@@ -74,7 +76,6 @@ from .helpers import (
 logger = logging.getLogger(__name__)
 
 
-
 class _BatteryCompat:
     """
     Compatibility wrapper to match dronekit.Battery interface.
@@ -84,7 +85,8 @@ class _BatteryCompat:
         current: Battery current draw in amps
         level: Battery level as percentage (0-100)
     """
-    __slots__ = ('voltage', 'current', 'level')
+
+    __slots__ = ("voltage", "current", "level")
 
     def __init__(self):
         self.voltage: float = 0.0
@@ -106,7 +108,8 @@ class _GPSInfoCompat:
         fix_type: GPS fix type (0-1: no fix, 2: 2d fix, 3: 3d fix)
         satellites_visible: Number of visible satellites
     """
-    __slots__ = ('fix_type', 'satellites_visible')
+
+    __slots__ = ("fix_type", "satellites_visible")
 
     def __init__(self):
         self.fix_type: int = 0
@@ -130,7 +133,8 @@ class _AttitudeCompat:
         roll: Roll angle in radians
         yaw: Yaw angle in radians
     """
-    __slots__ = ('pitch', 'roll', 'yaw')
+
+    __slots__ = ("pitch", "roll", "yaw")
 
     def __init__(self):
         self.pitch: float = 0.0
@@ -154,7 +158,8 @@ class _VersionCompat:
         patch: Patch version number
         release: Release type (if available)
     """
-    __slots__ = ('major', 'minor', 'patch', 'release')
+
+    __slots__ = ("major", "minor", "patch", "release")
 
     def __init__(self):
         self.major: Optional[int] = None
@@ -195,13 +200,14 @@ class Vehicle:
     This implementation uses MAVSDK internally while maintaining the exact same
     API as the original DroneKit-based implementation.
     """
+
     _system: Optional[System]
     _has_heartbeat: bool
 
     # function used by "verb" functions to check and see if the vehicle can be
     # commanded to move. should be set to a new closure by verb functions to
     # redefine functionality
-    _ready_to_move: Callable[['Vehicle'], bool] = lambda _: True
+    _ready_to_move: Callable[["Vehicle"], bool] = lambda _: True
 
     # Controls whether the vehicle can be aborted during movement
     _abortable: bool = False
@@ -282,7 +288,9 @@ class Vehicle:
             time.sleep(POLLING_DELAY_S)
 
         # Start internal update loop
-        update_thread = threading.Thread(target=self._internal_update_loop, daemon=True)
+        update_thread = threading.Thread(
+            target=self._internal_update_loop, daemon=True
+        )
         update_thread.start()
 
     async def _run_on_mavsdk_loop(self, coro):
@@ -334,11 +342,9 @@ class Vehicle:
 
         async def _velocity_update():
             async for velocity in self._system.telemetry.velocity_ned():
-                self._velocity_ned.set([
-                    velocity.north_m_s,
-                    velocity.east_m_s,
-                    velocity.down_m_s
-                ])
+                self._velocity_ned.set(
+                    [velocity.north_m_s, velocity.east_m_s, velocity.down_m_s]
+                )
 
         async def _gps_update():
             async for gps_info in self._system.telemetry.gps_info():
@@ -361,9 +367,9 @@ class Vehicle:
         async def _health_update():
             async for health in self._system.telemetry.health():
                 self._is_armable_state.set(
-                    health.is_global_position_ok and
-                    health.is_home_position_ok and
-                    health.is_armable
+                    health.is_global_position_ok
+                    and health.is_home_position_ok
+                    and health.is_armable
                 )
 
         async def _home_update():
@@ -371,7 +377,7 @@ class Vehicle:
                 self._home_position = util.Coordinate(
                     home.latitude_deg,
                     home.longitude_deg,
-                    home.relative_altitude_m
+                    home.relative_altitude_m,
                 )
 
         # Start all telemetry tasks
@@ -417,7 +423,7 @@ class Vehicle:
         return util.Coordinate(
             self._position_lat.get(),
             self._position_lon.get(),
-            self._position_alt.get()
+            self._position_alt.get(),
         )
 
     @property
@@ -475,7 +481,16 @@ class Vehicle:
         """
         Dump various properties collected by this vehicle for logging/debug purposes.
         """
-        nav_controller_output = (None, None, None, None, None, None, None, None)
+        nav_controller_output = (
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         if self._last_nav_controller_output is not None:
             nav_controller_output = self._last_nav_controller_output
 
@@ -509,10 +524,14 @@ class Vehicle:
 
     def _internal_update(self):
         # Called regularly at some given frequency by an internal update loop
-        if self._verbose_logging and (self._verbose_logging_last_log_time + self._verbose_logging_delay < time.time()):
+        if self._verbose_logging and (
+            self._verbose_logging_last_log_time + self._verbose_logging_delay
+            < time.time()
+        ):
             if self._verbose_logging_file_writer is None:
                 self._verbose_logging_file_writer = open(
-                    f"{self._verbose_logging_file_prefix}_{time.time_ns()}.csv", 'w'
+                    f"{self._verbose_logging_file_prefix}_{time.time_ns()}.csv",
+                    "w",
                 )
             log_output = self.debug_dump()
             self._verbose_logging_file_writer.write(f"{log_output}\n")
@@ -541,8 +560,7 @@ class Vehicle:
             await self._initialize_postarm()
 
         await wait_for_condition(
-            self.done_moving,
-            poll_interval=POLLING_DELAY_S
+            self.done_moving, poll_interval=POLLING_DELAY_S
         )
 
     def _abort(self):
@@ -588,9 +606,11 @@ class Vehicle:
             # Wait for arm state to match
             await wait_for_condition(
                 lambda: self._armed_state.get() == value,
-                poll_interval=POLLING_DELAY_S
+                poll_interval=POLLING_DELAY_S,
             )
-            logger.debug(f"Vehicle {'armed' if value else 'disarmed'} successfully")
+            logger.debug(
+                f"Vehicle {'armed' if value else 'disarmed'} successfully"
+            )
         except ActionError as e:
             logger.error(f"Arm/disarm failed: {e}")
             if value:
@@ -599,12 +619,16 @@ class Vehicle:
                 raise DisarmError(str(e), original_error=e)
 
     def _initialize_prearm(self, should_postarm_init: bool) -> None:
-        logger.debug(f"_initialize_prearm(should_postarm_init={should_postarm_init}) called")
+        logger.debug(
+            f"_initialize_prearm(should_postarm_init={should_postarm_init}) called"
+        )
         start = time.time()
         last_log = 0.0
         while not self._is_armable_state.get():
             if time.time() - start > ARMABLE_TIMEOUT_S:
-                logger.warning(f"Timeout waiting for armable state ({ARMABLE_TIMEOUT_S}s)")
+                logger.warning(
+                    f"Timeout waiting for armable state ({ARMABLE_TIMEOUT_S}s)"
+                )
                 break
             # Log status at configured interval
             if time.time() - last_log > ARMABLE_STATUS_LOG_INTERVAL_S:
@@ -641,16 +665,17 @@ class Vehicle:
 
         if is_aerpaw:
             # In AERPAW environment, wait for safety pilot to arm
-            AERPAW_Platform.log_to_oeo("[aerpawlib] Guided command attempted. Waiting for safety pilot to arm")
+            AERPAW_Platform.log_to_oeo(
+                "[aerpawlib] Guided command attempted. Waiting for safety pilot to arm"
+            )
             logger.info("Waiting for safety pilot to arm vehicle...")
 
             await wait_for_condition(
                 lambda: self._is_armable_state.get(),
-                poll_interval=POLLING_DELAY_S
+                poll_interval=POLLING_DELAY_S,
             )
             await wait_for_condition(
-                lambda: self.armed,
-                poll_interval=POLLING_DELAY_S
+                lambda: self.armed, poll_interval=POLLING_DELAY_S
             )
         else:
             # In standalone/SITL, auto-arm the vehicle
@@ -662,7 +687,7 @@ class Vehicle:
                     lambda: self._is_armable_state.get(),
                     timeout=CONNECTION_TIMEOUT_S,
                     poll_interval=POLLING_DELAY_S,
-                    timeout_message=f"Vehicle not armable after {CONNECTION_TIMEOUT_S}s - check GPS and pre-flight conditions"
+                    timeout_message=f"Vehicle not armable after {CONNECTION_TIMEOUT_S}s - check GPS and pre-flight conditions",
                 )
             except TimeoutError as e:
                 logger.error(str(e))
@@ -684,7 +709,7 @@ class Vehicle:
         self,
         coordinates: util.Coordinate,
         tolerance: float = DEFAULT_POSITION_TOLERANCE_M,
-        target_heading: Optional[float] = None
+        target_heading: Optional[float] = None,
     ) -> None:
         """
         Make the vehicle go to provided coordinates.
@@ -697,13 +722,15 @@ class Vehicle:
         Raises:
             NotImplementedForVehicleError: Generic vehicles cannot navigate
         """
-        raise NotImplementedForVehicleError("goto_coordinates", "generic Vehicle")
+        raise NotImplementedForVehicleError(
+            "goto_coordinates", "generic Vehicle"
+        )
 
     async def set_velocity(
         self,
         velocity_vector: util.VectorNED,
         global_relative: bool = True,
-        duration: Optional[float] = None
+        duration: Optional[float] = None,
     ) -> None:
         """
         Set a drone's velocity that it will use for `duration` seconds.
@@ -731,7 +758,9 @@ class Vehicle:
         validate_speed(velocity, "velocity")
         logger.debug(f"set_groundspeed({velocity}) called")
         try:
-            await self._run_on_mavsdk_loop(self._system.action.set_maximum_speed(velocity))
+            await self._run_on_mavsdk_loop(
+                self._system.action.set_maximum_speed(velocity)
+            )
             logger.debug(f"Maximum speed set to {velocity} m/s")
         except ActionError:
             logger.debug("set_maximum_speed not supported by autopilot")
@@ -758,7 +787,7 @@ class Drone(Vehicle):
         self,
         heading: Optional[float],
         blocking: bool = True,
-        lock_in: bool = True
+        lock_in: bool = True,
     ) -> None:
         """
         Set the heading of the vehicle (in absolute deg).
@@ -774,12 +803,16 @@ class Drone(Vehicle):
             blocking: If True, wait for heading to be reached
             lock_in: If True, maintain this heading during subsequent movements
         """
-        logger.debug(f"set_heading(heading={heading}, blocking={blocking}, lock_in={lock_in}) called")
+        logger.debug(
+            f"set_heading(heading={heading}, blocking={blocking}, lock_in={lock_in}) called"
+        )
         if blocking:
             await self.await_ready_to_move()
 
         if heading is None:
-            logger.debug("Clearing locked heading, returning to default behavior")
+            logger.debug(
+                "Clearing locked heading, returning to default behavior"
+            )
             self._current_heading = None
             return
 
@@ -789,25 +822,32 @@ class Drone(Vehicle):
         if not blocking:
             return
 
-        logger.debug(f"Turning to heading {heading}° (current: {self.heading}°)")
+        logger.debug(
+            f"Turning to heading {heading}° (current: {self.heading}°)"
+        )
         # Use offboard mode to control yaw
         try:
-            await self._run_on_mavsdk_loop(self._system.offboard.set_position_ned(
-                PositionNedYaw(0, 0, -self._position_alt.get(), heading)
-            ))
+            await self._run_on_mavsdk_loop(
+                self._system.offboard.set_position_ned(
+                    PositionNedYaw(0, 0, -self._position_alt.get(), heading)
+                )
+            )
             try:
                 await self._run_on_mavsdk_loop(self._system.offboard.start())
             except OffboardError:
                 pass  # Already in offboard mode
 
             def _pointed_at_heading(self) -> bool:
-                return heading_difference(heading, self.heading) <= HEADING_TOLERANCE_DEG
+                return (
+                    heading_difference(heading, self.heading)
+                    <= HEADING_TOLERANCE_DEG
+                )
 
             self._ready_to_move = _pointed_at_heading
 
             await wait_for_condition(
                 lambda: _pointed_at_heading(self),
-                poll_interval=POLLING_DELAY_S
+                poll_interval=POLLING_DELAY_S,
             )
 
             await self._run_on_mavsdk_loop(self._system.offboard.stop())
@@ -818,7 +858,7 @@ class Drone(Vehicle):
     async def takeoff(
         self,
         target_alt: float,
-        min_alt_tolerance: float = DEFAULT_TAKEOFF_ALTITUDE_TOLERANCE
+        min_alt_tolerance: float = DEFAULT_TAKEOFF_ALTITUDE_TOLERANCE,
     ) -> None:
         """
         Make the drone take off to a specific altitude, and blocks until the
@@ -834,7 +874,9 @@ class Drone(Vehicle):
         """
         validate_altitude(target_alt, "target_alt")
 
-        logger.debug(f"takeoff(target_alt={target_alt}, min_alt_tolerance={min_alt_tolerance}) called")
+        logger.debug(
+            f"takeoff(target_alt={target_alt}, min_alt_tolerance={min_alt_tolerance}) called"
+        )
         await self.await_ready_to_move()
 
         # wait_for_throttle is ignored in MAVSDK implementation
@@ -845,7 +887,9 @@ class Drone(Vehicle):
 
         try:
             logger.debug(f"Setting takeoff altitude to {target_alt}m")
-            await self._run_on_mavsdk_loop(self._system.action.set_takeoff_altitude(target_alt))
+            await self._run_on_mavsdk_loop(
+                self._system.action.set_takeoff_altitude(target_alt)
+            )
             logger.debug("Sending takeoff command...")
             await self._run_on_mavsdk_loop(self._system.action.takeoff())
 
@@ -854,13 +898,16 @@ class Drone(Vehicle):
 
             self._ready_to_move = taken_off
 
-            logger.debug(f"Waiting to reach altitude {target_alt * min_alt_tolerance}m...")
+            logger.debug(
+                f"Waiting to reach altitude {target_alt * min_alt_tolerance}m..."
+            )
             await wait_for_condition(
-                lambda: taken_off(self),
-                poll_interval=POLLING_DELAY_S
+                lambda: taken_off(self), poll_interval=POLLING_DELAY_S
             )
 
-            logger.debug(f"Reached target altitude, current alt: {self.position.alt}m")
+            logger.debug(
+                f"Reached target altitude, current alt: {self.position.alt}m"
+            )
             # Post-takeoff stabilization delay
             await asyncio.sleep(POST_TAKEOFF_STABILIZATION_S)
             logger.debug("Takeoff complete")
@@ -889,8 +936,7 @@ class Drone(Vehicle):
 
             logger.debug("Waiting for vehicle to disarm...")
             await wait_for_condition(
-                lambda: not self.armed,
-                poll_interval=POLLING_DELAY_S
+                lambda: not self.armed, poll_interval=POLLING_DELAY_S
             )
             logger.debug("Landing complete, vehicle disarmed")
         except ActionError as e:
@@ -913,14 +959,15 @@ class Drone(Vehicle):
 
         try:
             logger.debug("Sending RTL command...")
-            await self._run_on_mavsdk_loop(self._system.action.return_to_launch())
+            await self._run_on_mavsdk_loop(
+                self._system.action.return_to_launch()
+            )
 
             self._ready_to_move = lambda _: False
 
             logger.debug("Waiting for vehicle to complete RTL and disarm...")
             await wait_for_condition(
-                lambda: not self.armed,
-                poll_interval=POLLING_DELAY_S
+                lambda: not self.armed, poll_interval=POLLING_DELAY_S
             )
             logger.debug("RTL complete, vehicle disarmed")
         except ActionError as e:
@@ -931,7 +978,7 @@ class Drone(Vehicle):
         self,
         coordinates: util.Coordinate,
         tolerance: float = DEFAULT_POSITION_TOLERANCE_M,
-        target_heading: Optional[float] = None
+        target_heading: Optional[float] = None,
     ) -> None:
         """
         Make the vehicle go to provided coordinates.
@@ -947,7 +994,9 @@ class Drone(Vehicle):
         """
         validate_tolerance(tolerance, "tolerance")
 
-        logger.debug(f"goto_coordinates(lat={coordinates.lat}, lon={coordinates.lon}, alt={coordinates.alt}, tolerance={tolerance}, heading={target_heading}) called")
+        logger.debug(
+            f"goto_coordinates(lat={coordinates.lat}, lon={coordinates.lon}, alt={coordinates.alt}, tolerance={tolerance}, heading={target_heading}) called"
+        )
         if target_heading is not None:
             await self.set_heading(target_heading)
 
@@ -964,26 +1013,35 @@ class Drone(Vehicle):
 
         try:
             # Use goto_location action
-            target_alt = coordinates.alt + (self._home_location.alt if self._home_location else 0)
-            logger.debug(f"Navigating to: lat={coordinates.lat}, lon={coordinates.lon}, alt={target_alt}, heading={heading}")
-            await self._run_on_mavsdk_loop(self._system.action.goto_location(
-                coordinates.lat,
-                coordinates.lon,
-                target_alt,
-                heading if not math.isnan(heading) else 0
-            ))
+            target_alt = coordinates.alt + (
+                self._home_location.alt if self._home_location else 0
+            )
+            logger.debug(
+                f"Navigating to: lat={coordinates.lat}, lon={coordinates.lon}, alt={target_alt}, heading={heading}"
+            )
+            await self._run_on_mavsdk_loop(
+                self._system.action.goto_location(
+                    coordinates.lat,
+                    coordinates.lon,
+                    target_alt,
+                    heading if not math.isnan(heading) else 0,
+                )
+            )
 
             def at_coords(self) -> bool:
                 return coordinates.distance(self.position) <= tolerance
 
             self._ready_to_move = at_coords
 
-            logger.debug(f"Waiting to reach destination (tolerance={tolerance}m)...")
-            await wait_for_condition(
-                lambda: at_coords(self),
-                poll_interval=POLLING_DELAY_S
+            logger.debug(
+                f"Waiting to reach destination (tolerance={tolerance}m)..."
             )
-            logger.debug(f"Arrived at destination, distance: {coordinates.distance(self.position)}m")
+            await wait_for_condition(
+                lambda: at_coords(self), poll_interval=POLLING_DELAY_S
+            )
+            logger.debug(
+                f"Arrived at destination, distance: {coordinates.distance(self.position)}m"
+            )
         except ActionError as e:
             logger.error(f"Goto failed: {e}")
             raise NavigationError(str(e), original_error=e)
@@ -992,7 +1050,7 @@ class Drone(Vehicle):
         self,
         velocity_vector: util.VectorNED,
         global_relative: bool = True,
-        duration: Optional[float] = None
+        duration: Optional[float] = None,
     ) -> None:
         """
         Set a drone's velocity that it will use for `duration` seconds.
@@ -1005,7 +1063,9 @@ class Drone(Vehicle):
         Raises:
             VelocityError: If velocity command fails
         """
-        logger.debug(f"set_velocity(N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, global_relative={global_relative}, duration={duration}) called")
+        logger.debug(
+            f"set_velocity(N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, global_relative={global_relative}, duration={duration}) called"
+        )
         await self.await_ready_to_move()
 
         self._velocity_loop_active = False
@@ -1013,20 +1073,30 @@ class Drone(Vehicle):
 
         if not global_relative:
             velocity_vector = velocity_vector.rotate_by_angle(-self.heading)
-            logger.debug(f"Rotated velocity to global frame: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}")
+            logger.debug(
+                f"Rotated velocity to global frame: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}"
+            )
 
-        yaw = self._current_heading if self._current_heading is not None else self.heading
+        yaw = (
+            self._current_heading
+            if self._current_heading is not None
+            else self.heading
+        )
 
         try:
-            logger.debug(f"Setting velocity NED: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, yaw={yaw}")
-            await self._run_on_mavsdk_loop(self._system.offboard.set_velocity_ned(
-                VelocityNedYaw(
-                    velocity_vector.north,
-                    velocity_vector.east,
-                    velocity_vector.down,
-                    yaw
+            logger.debug(
+                f"Setting velocity NED: N={velocity_vector.north}, E={velocity_vector.east}, D={velocity_vector.down}, yaw={yaw}"
+            )
+            await self._run_on_mavsdk_loop(
+                self._system.offboard.set_velocity_ned(
+                    VelocityNedYaw(
+                        velocity_vector.north,
+                        velocity_vector.east,
+                        velocity_vector.down,
+                        yaw,
+                    )
                 )
-            ))
+            )
 
             try:
                 await self._run_on_mavsdk_loop(self._system.offboard.start())
@@ -1034,13 +1104,17 @@ class Drone(Vehicle):
                 pass  # Already in offboard mode
 
             self._ready_to_move = lambda _: True
-            target_end = time.time() + duration if duration is not None else None
+            target_end = (
+                time.time() + duration if duration is not None else None
+            )
 
             async def _velocity_helper():
                 while self._velocity_loop_active:
                     if target_end is not None and time.time() > target_end:
                         self._velocity_loop_active = False
-                        await self._run_on_mavsdk_loop(self._system.offboard.stop())
+                        await self._run_on_mavsdk_loop(
+                            self._system.offboard.stop()
+                        )
                     await asyncio.sleep(VELOCITY_UPDATE_DELAY_S)
 
             self._velocity_loop_active = True
@@ -1069,7 +1143,7 @@ class Rover(Vehicle):
         self,
         coordinates: util.Coordinate,
         tolerance: float = DEFAULT_ROVER_POSITION_TOLERANCE_M,
-        target_heading: Optional[float] = None
+        target_heading: Optional[float] = None,
     ) -> None:
         """
         Make the vehicle go to provided coordinates.
@@ -1092,12 +1166,14 @@ class Rover(Vehicle):
             self._mission_start_time = time.time()
 
         try:
-            await self._run_on_mavsdk_loop(self._system.action.goto_location(
-                coordinates.lat,
-                coordinates.lon,
-                0,  # Rovers ignore altitude
-                0   # Heading
-            ))
+            await self._run_on_mavsdk_loop(
+                self._system.action.goto_location(
+                    coordinates.lat,
+                    coordinates.lon,
+                    0,  # Rovers ignore altitude
+                    0,  # Heading
+                )
+            )
 
             def at_coords(self) -> bool:
                 return coordinates.ground_distance(self.position) <= tolerance
@@ -1105,9 +1181,7 @@ class Rover(Vehicle):
             self._ready_to_move = at_coords
 
             await wait_for_condition(
-                lambda: at_coords(self),
-                poll_interval=POLLING_DELAY_S
+                lambda: at_coords(self), poll_interval=POLLING_DELAY_S
             )
         except ActionError as e:
             raise NavigationError(str(e), original_error=e)
-

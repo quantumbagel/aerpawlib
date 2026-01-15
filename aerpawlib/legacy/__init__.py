@@ -14,4 +14,3 @@ from .aerpaw import *
 from .zmqutil import *
 from .safetyChecker import *
 from .external import *
-

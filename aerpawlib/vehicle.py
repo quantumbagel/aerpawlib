@@ -18,9 +18,8 @@ warnings.warn(
     "Use 'from aerpawlib.v1.vehicle import ...' or "
     "'from aerpawlib.v2.vehicle import ...' instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
 # Re-export everything from v1 for backward compatibility
 from .v1.vehicle import *
-
