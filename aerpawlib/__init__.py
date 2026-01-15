@@ -3,8 +3,8 @@
 """
 
 __version__ = "2.0.0"
-__author__ = "John Kesler"
+__author__ = "John Kesler and Julian Reder"
 
 
-# Default to v1 API (MAVSDK-based, API compatible with legacy)
-from .v1 import *
+# Default to legacy API (DroneKit-based)
+from .legacy import *

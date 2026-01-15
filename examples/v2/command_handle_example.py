@@ -17,9 +17,11 @@ This is useful for complex missions where you want to:
 import asyncio
 
 from aerpawlib.v2 import (
+    BasicRunner,
     CommandCancelledError,
     Coordinate,
     Drone,
+    entrypoint,
     GotoTimeoutError,
     VectorNED,
     # Logging
@@ -31,9 +33,11 @@ from aerpawlib.v2 import (
 logger = get_logger(LogComponent.USER)
 
 
-async def basic_non_blocking_example():
+class BasicNonBlockingExample(BasicRunner):
     """Basic example of non-blocking goto with progress monitoring."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=10)
 
@@ -67,9 +71,11 @@ async def basic_non_blocking_example():
         await drone.land()
 
 
-async def cancellation_example():
+class CancellationExample(BasicRunner):
     """Example of cancelling a command mid-execution."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=10)
 
@@ -93,9 +99,11 @@ async def cancellation_example():
         await drone.land()
 
 
-async def parallel_operations_example():
+class ParallelOperationsExample(BasicRunner):
     """Example of running operations in parallel with a moving drone."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=10)
 
@@ -129,9 +137,11 @@ async def parallel_operations_example():
         await drone.land()
 
 
-async def orbit_with_progress_example():
+class OrbitWithProgressExample(BasicRunner):
     """Example of monitoring orbit progress."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=15)
 
@@ -156,9 +166,11 @@ async def orbit_with_progress_example():
         await drone.land()
 
 
-async def await_handle_later_example():
+class AwaitHandleLaterExample(BasicRunner):
     """Example of starting a command and awaiting it later."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
 
         # Start takeoff without waiting
@@ -182,9 +194,11 @@ async def await_handle_later_example():
         await drone.land()
 
 
-async def command_result_example():
+class CommandResultExample(BasicRunner):
     """Example of using CommandResult for detailed information."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=10)
 
@@ -211,9 +225,11 @@ async def command_result_example():
         await drone.land()
 
 
-async def velocity_with_duration_example():
+class VelocityWithDurationExample(BasicRunner):
     """Example of timed velocity command with handle."""
-    async with Drone("udp://:14540") as drone:
+
+    @entrypoint
+    async def run(self, drone: Drone):
         await drone.arm()
         await drone.takeoff(altitude=10)
 
@@ -233,8 +249,3 @@ async def velocity_with_duration_example():
         await drone.hold()
         await drone.land()
 
-
-if __name__ == "__main__":
-    # Run one of the examples
-    logger.info("Running basic non-blocking example...")
-    asyncio.run(basic_non_blocking_example())

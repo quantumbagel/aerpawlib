@@ -1,8 +1,8 @@
 # aerpawlib Legacy API Documentation
 
-> **⚠️ Deprecated**: The legacy API uses DroneKit which is no longer actively maintained. For new projects, please use the [v2 API](../v2/README.md) or [v1 API](../v1/README.md).
+> **⚠️ Deprecated**: The legacy API uses DroneKit which is no longer actively maintained and has not been for over 2 years. For new projects, please use the [v2 API (beta)](../v2/README.md) or [v1 API (preferred)](../v1/README.md).
 
-The legacy aerpawlib API is the original DroneKit-based implementation for vehicle control. It is preserved for backward compatibility and reference.
+The legacy aerpawlib API is the original DroneKit-based implementation for vehicle control. It is preserved for backward compatibility and reference. 
 
 ## Requirements
 
@@ -29,7 +29,6 @@ class MyMission(BasicRunner):
         await drone.land()
 ```
 
-## Core Concepts
 
 ### Connection
 
@@ -212,7 +211,7 @@ await rover.goto_coordinates(target)
 
 ## Safety Checker
 
-The legacy API includes a basic safety checker for geofence validation. For detailed documentation, see the [Safety Checker Guide](safety_checker.md).
+The legacy API includes a basic safety checker for geofence validation. For detailed documentation, see the [Safety Checker Guide](safety_checker.md). SafetyChecker uses a client-server model to validate waypoints against geofences.
 
 ### SafetyCheckerServer
 
@@ -228,7 +227,12 @@ server = SafetyCheckerServer("geofence_config.yaml", server_port=14580)
 server.start_server()
 ```
 
+This can also be run from the safetyChecker.py script in the aerpawlib/legacy/ directory. It is automatically started within the AERPAW environment.
+
 ### SafetyCheckerClient
+
+> **Note**: The safety checker is managed by the runner in AERPAW. You typically do not need to connect to it manually.
+
 
 Connect to the safety checker from your script:
 
@@ -246,6 +250,7 @@ if not result:
     print("Waypoint outside geofence!")
 ```
 
+
 ### Configuration File Format
 
 ```yaml
@@ -260,8 +265,6 @@ include_geofences:
 exclude_geofences:
   - no_fly_zone.kml
 ```
-
-> **Note**: For more advanced safety features (pre-flight checks, battery failsafe, parameter validation), use the [v2 API](../v2/README.md).
 
 ---
 
@@ -372,7 +375,7 @@ async def log_telemetry(self, drone: Drone):
 
 ## ZMQ Communication
 
-The legacy API includes ZMQ utilities for inter-process communication.
+The legacy API includes ZMQ utilities for IPC (inter-process communication).
 
 ### ZMQ Proxy
 
@@ -532,70 +535,3 @@ class Follower(BasicRunner):
         
         await drone.land()
 ```
-
----
-
-## Troubleshooting
-
-### Connection Issues
-
-```python
-# Increase timeout (DroneKit uses heartbeat monitoring)
-import dronekit
-dronekit.connect("udp:127.0.0.1:14540", wait_ready=True, timeout=60)
-```
-
-### Vehicle Not Arming
-
-Check that:
-1. GPS has a fix (`drone.gps.fix_type >= 3`)
-2. Battery is charged
-3. Safety switch is disabled (if applicable)
-4. No pre-arm errors in autopilot
-
-```python
-while drone.gps.fix_type < 3:
-    print(f"Waiting for GPS fix... (type: {drone.gps.fix_type})")
-    await asyncio.sleep(1)
-```
-
-### DroneKit Installation Issues
-
-```bash
-# On macOS, you may need:
-pip install dronekit --no-binary :all:
-
-# Or use a specific version:
-pip install dronekit==2.9.2
-```
-
----
-
-## Migration Guide
-
-To migrate from legacy to v1 or v2:
-
-### Legacy → v1
-The v1 API is API-compatible with legacy but uses MAVSDK internally:
-
-```python
-# Change import only
-from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
-
-# All existing code works unchanged
-```
-
-### Legacy → v2
-The v2 API offers a cleaner, more Pythonic interface:
-
-```python
-# Legacy
-await drone.goto_coordinates(Coordinate(35.7, -78.6, 10), tolerance=2)
-
-# v2
-await drone.goto(coordinates=Coordinate(35.7, -78.6, 10), tolerance=2)
-# or
-await drone.goto(latitude=35.7, longitude=-78.6, altitude=10)
-```
-
-See the [v2 Migration Guide](../v2/migration.md) for details.

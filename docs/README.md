@@ -1,24 +1,26 @@
 # aerpawlib Documentation
 
-Welcome to the aerpawlib documentation. aerpawlib is a Python library for autonomous vehicle control, providing a clean async API for drones and rovers.
-
+Welcome to the aerpawlib documentation. aerpawlib is a Python library for autonomous vehicle control within the
+[AERPAW](https://aerpaw.org) environment. 
 ## API Versions
 
 aerpawlib offers three API versions to accommodate different needs:
 
-| Version | Backend | Recommended For |
-|---------|---------|--------|-----------------|
-| [v2](v2/README.md) | MAVSDK | Nothing currently as it is very buggy :D |
-| [v1](v1/README.md) | MAVSDK | No API changes. Still has major bugs. |
-| [legacy](legacy/README.md) | DroneKit | Still use for most projects. |
+
+| Version                    | Backend  | Recommended For                          |
+|----------------------------|----------|------------------------------------------|
+| [v2](v2/README.md)         | MAVSDK   | Nothing currently as it is very buggy :D |
+| [v1](v1/README.md)         | MAVSDK   | No API changes. Still has major bugs.    |
+| [legacy](legacy/README.md) | DroneKit | Still use for most projects.             |
+
 
 ## Quick Comparison
 
-| Feature               | Legacy          | v1              | v2             |
-|-----------------------|-----------------|-----------------|----------------|
-| Backend               | DroneKit        | MAVSDK          | MAVSDK         |
-| Python                | 3.7+            | 3.8+            | 3.8+           |
-| Async Support         | Some components | Some components | All components |
+| Feature               | Legacy                      | v1              | v2             |
+|-----------------------|-----------------------------|-----------------|----------------|
+| Backend               | DroneKit                    | MAVSDK          | MAVSDK         |
+| Python                | 3.7-3.10 (patched to 3.10+) | 3.9+            | 3.9+           |
+| Async Support         | Some components             | Some components | All components |
 
 
 ## Installation
@@ -27,35 +29,6 @@ aerpawlib offers three API versions to accommodate different needs:
 pip install -e .
 ```
 
-## Quick Start
-
-### v2 API
-
-```python
-from aerpawlib.v2 import Drone, Coordinate, BasicRunner, entrypoint
-
-class MyMission(BasicRunner):
-    @entrypoint
-    async def run(self, drone: Drone):
-        await drone.connect()
-        await drone.arm()  # Pre-flight checks run automatically
-        await drone.takeoff(altitude=10)
-        await drone.goto(coordinates=Coordinate(35.7, -78.6, 10))
-        await drone.land()
-```
-
-### legacy/v1 API
-
-```python
-from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
-
-class MyMission(BasicRunner):
-    @entrypoint
-    async def run(self, drone: Drone):
-        await drone.takeoff(10)
-        await drone.goto_coordinates(Coordinate(35.7, -78.6, 10))
-        await drone.land()
-```
 ## Examples
 
 See the [`examples/`](../examples/) directory for working examples:

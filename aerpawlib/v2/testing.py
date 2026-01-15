@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import List, Optional
 
 from .types import (
     Coordinate,
@@ -107,21 +107,12 @@ class MockDrone:
         self._simulated_speed: float = 5.0
         self._waypoints: List[Waypoint] = []
 
-        self._callbacks: Dict[str, List[Callable]] = {}
-
         # Failure injection
         self._fail_on_arm = False
         self._fail_on_takeoff = False
         self._fail_on_goto = False
 
-    async def __aenter__(self) -> "MockDrone":
-        await self.connect()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.disconnect()
-
-    # Properties matching VehicleProtocol
+    @property
     @property
     def connected(self) -> bool:
         return self._connected
@@ -167,33 +158,14 @@ class MockDrone:
         await asyncio.sleep(0.01)
         self._connected = True
         self._home = self.position
-        await self._trigger_callbacks("on_connect")
         return True
 
     async def disconnect(self) -> None:
         self._connected = False
-        await self._trigger_callbacks("on_disconnect")
-
-    # Events
-    def on(self, event: Any, callback: Callable) -> None:
-        event_name = event.value if hasattr(event, "value") else str(event)
-        if event_name not in self._callbacks:
-            self._callbacks[event_name] = []
-        self._callbacks[event_name].append(callback)
-
-    def off(self, event: Any, callback: Callable) -> None:
-        event_name = event.value if hasattr(event, "value") else str(event)
-        if (
-            event_name in self._callbacks
-            and callback in self._callbacks[event_name]
-        ):
-            self._callbacks[event_name].remove(callback)
 
     async def _trigger_callbacks(self, event: str, *args, **kwargs) -> None:
-        for callback in self._callbacks.get(event, []):
-            result = callback(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                await result
+        """Internal event handler - no-op for mock."""
+        pass
 
     # Basic operations
     async def arm(self, force: bool = False) -> bool:
@@ -207,14 +179,12 @@ class MockDrone:
             raise NotArmableError()
         await asyncio.sleep(0.01)
         self._armed = True
-        await self._trigger_callbacks("on_arm")
         return True
 
     async def disarm(self, force: bool = False) -> bool:
         await asyncio.sleep(0.01)
         self._armed = False
         self.state.landed_state = LandedState.ON_GROUND
-        await self._trigger_callbacks("on_disarm")
         return True
 
     async def takeoff(self, altitude: float = 5.0, wait: bool = True) -> bool:

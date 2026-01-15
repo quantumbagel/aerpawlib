@@ -1,7 +1,8 @@
 # aerpawlib v1 API Documentation
 
-The v1 API provides backward compatibility with the legacy aerpawlib API while using **MAVSDK** as the backend instead of DroneKit. This allows existing scripts to work with modern autopilot firmware without code changes.
+The v1 API provides backward compatibility with the legacy aerpawlib API while using **MAVSDK** as the backend instead of DroneKit. This allows existing scripts to work with modern autopilot firmware without code changes. It will also allow AERPAW to update the firmware on the vehicle without having to monkey patch `aerpawlib`.
 
+> **Note**: v1 uses the same API as the legacy version. It has no additional features and is intended to become a stopgap until aerpawlib v2 is ready.
 ## Requirements
 
 - Python 3.8+
@@ -53,30 +54,21 @@ drone = Drone("tcp://localhost:5760")
 
 The v1 API is fully compatible with the [legacy API](../legacy/README.md). All classes, methods, and properties work identically.
 
-### Changes from Legacy
-
-| Aspect | Legacy | v1 |
-|--------|--------|-----|
-| Backend | DroneKit | MAVSDK |
-| Connection string | `"udp:127.0.0.1:14540"` | `"udp://:14540"` |
-| Battery level | `drone.battery.level` (0-100) | Same |
-| GPS info | `dronekit.GPSInfo` | Compatible wrapper |
-| Attitude | `dronekit.Attitude` | Compatible wrapper |
 
 ### Vehicle Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `connected` | `bool` | True if receiving heartbeats |
-| `position` | `Coordinate` | Current position (lat, lon, alt) |
-| `battery` | `object` | Battery status (voltage, current, level) |
-| `gps` | `object` | GPS status (fix_type, satellites_visible) |
-| `armed` | `bool` | True if vehicle is armed |
-| `home_coords` | `Coordinate` | Home/launch position |
-| `heading` | `float` | Current heading in degrees |
-| `velocity` | `VectorNED` | Current velocity (north, east, down) |
-| `attitude` | `object` | Roll, pitch, yaw in radians |
-| `autopilot_info` | `object` | Autopilot version info |
+| Property         | Type         | Description                               |
+|------------------|--------------|-------------------------------------------|
+| `connected`      | `bool`       | True if receiving heartbeats              |
+| `position`       | `Coordinate` | Current position (lat, lon, alt)          |
+| `battery`        | `object`     | Battery status (voltage, current, level)  |
+| `gps`            | `object`     | GPS status (fix_type, satellites_visible) |
+| `armed`          | `bool`       | True if vehicle is armed                  |
+| `home_coords`    | `Coordinate` | Home/launch position                      |
+| `heading`        | `float`      | Current heading in degrees                |
+| `velocity`       | `VectorNED`  | Current velocity (north, east, down)      |
+| `attitude`       | `object`     | Roll, pitch, yaw in radians               |
+| `autopilot_info` | `object`     | Autopilot version info                    |
 
 ---
 
@@ -85,11 +77,11 @@ The v1 API is fully compatible with the [legacy API](../legacy/README.md). All c
 #### `await takeoff(target_alt: float, min_alt_tolerance: float = 0.95, wait_for_throttle: bool = False)`
 Take off to the specified altitude.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `target_alt` | `float` | Target altitude in meters |
+| Parameter           | Type    | Description                                                 |
+|---------------------|---------|-------------------------------------------------------------|
+| `target_alt`        | `float` | Target altitude in meters                                   |
 | `min_alt_tolerance` | `float` | Fraction of target alt considered "reached" (default: 0.95) |
-| `wait_for_throttle` | `bool` | Wait for RC throttle to center before takeoff |
+| `wait_for_throttle` | `bool`  | Wait for RC throttle to center before takeoff               |
 
 ```python
 await drone.takeoff(10)  # Take off to 10 meters
@@ -557,106 +549,12 @@ Migration from legacy to v1 requires minimal changes:
 
 ```python
 # Before (legacy)
-from aerpawlib.legacy import Drone, Coordinate, BasicRunner, entrypoint
+from aerpawlib import Drone, Coordinate, BasicRunner, entrypoint  # Note that this still works but is deprecated
 
 # After (v1)
 from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
 ```
 
-### 2. Update connection strings (if needed)
-
-```python
-# Legacy (DroneKit style)
-drone = Drone("udp:127.0.0.1:14540")
-
-# v1 (MAVSDK style)
-drone = Drone("udp://:14540")
-```
-
-### 3. Install MAVSDK
-
-```bash
-pip install mavsdk
-```
 
 That's it! All other code remains unchanged.
 
----
-
-## Migration to v2
-
-For new projects, consider the [v2 API](../v2/README.md) which offers:
-
-- Cleaner, more Pythonic syntax
-- Property-based state access (`drone.state.heading` vs `drone.heading`)
-- CommandHandle for non-blocking operations with progress tracking
-- Better error handling with structured exceptions
-- Context manager support
-- Comprehensive safety features (pre-flight checks, battery failsafe, parameter validation)
-
-### Key Differences
-
-| Feature | v1 | v2 |
-|---------|-----|-----|
-| Syntax | `goto_coordinates(coord)` | `goto(coordinates=coord)` |
-| State access | `drone.position` | `drone.position` (same) |
-| Non-blocking | Not supported | `CommandHandle` |
-| Exceptions | Generic | Structured hierarchy |
-| Safety | Basic geofence | Full safety suite |
-| Context manager | No | Yes |
-
-See the [v2 Migration Guide](../v2/migration.md) for details.
-
----
-
-## Troubleshooting
-
-### Connection Issues
-
-```python
-# Increase connection timeout
-import asyncio
-# The default timeout is 30 seconds, but you can wait longer
-await asyncio.wait_for(drone.connect(), timeout=60)
-```
-
-### MAVSDK Not Found
-
-```bash
-pip install mavsdk
-```
-
-### Vehicle Not Arming
-
-Check that:
-1. GPS has a fix (`drone.gps.fix_type >= 3`)
-2. Pre-arm checks pass
-3. Safety pilot is ready to arm
-4. No geofence violations
-
-```python
-import asyncio
-
-while not drone.gps.fix_type >= 3:
-    print(f"Waiting for GPS... (type: {drone.gps.fix_type})")
-    await asyncio.sleep(1)
-
-print(f"GPS ready with {drone.gps.satellites_visible} satellites")
-```
-
-### Safety Checker Connection Failed
-
-```python
-from aerpawlib.v1 import SafetyCheckerClient
-import zmq
-
-client = SafetyCheckerClient("127.0.0.1", 14580)
-
-try:
-    if client.checkServerStatus():
-        print("Safety checker is running")
-    else:
-        print("Safety checker not responding")
-except zmq.ZMQError as e:
-    print(f"Connection failed: {e}")
-```

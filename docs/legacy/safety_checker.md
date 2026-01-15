@@ -2,20 +2,19 @@
 
 The legacy API includes a safety checker system for geofence validation using ZMQ communication.
 
-> **Note**: For comprehensive safety features including pre-flight checks, battery failsafe, and parameter validation, consider upgrading to the [v2 API](../v2/safety.md).
-
+> **Note**: There are several significant safety features missing from the legacy safety checker that are included in the v2 API.
 ## Overview
 
 The safety checker system consists of:
 
-| Component | Description |
-|-----------|-------------|
+| Component             | Description                                         |
+|-----------------------|-----------------------------------------------------|
 | `SafetyCheckerServer` | Runs geofence validation, receives requests via ZMQ |
-| `SafetyCheckerClient` | Sends validation requests to the server |
+| `SafetyCheckerClient` | Sends validation requests to the server             |
 
 ## Quick Start
 
-### 1. Create a Geofence Configuration
+### Create a Geofence Configuration
 
 ```yaml
 # geofence_config.yaml
@@ -30,7 +29,7 @@ exclude_geofences:
   - no_fly_zone.kml
 ```
 
-### 2. Start the Server
+### Start the Server
 
 ```python
 from aerpawlib.legacy.safetyChecker import SafetyCheckerServer
@@ -39,7 +38,7 @@ server = SafetyCheckerServer("geofence_config.yaml", server_port=14580)
 server.start_server()  # Blocks
 ```
 
-### 3. Connect from Your Script
+### Connect from Your Script
 
 ```python
 from aerpawlib.legacy.safetyChecker import SafetyCheckerClient
@@ -86,15 +85,15 @@ server.start_server(port=14581)
 
 ### Configuration Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `vehicle_type` | `str` | "copter" or "rover" |
-| `max_speed` | `float` | Maximum allowed speed (m/s) |
-| `min_speed` | `float` | Minimum allowed speed (m/s) |
-| `max_alt` | `float` | Maximum altitude for copters (m) |
-| `min_alt` | `float` | Minimum altitude for copters (m) |
-| `include_geofences` | `list` | KML files defining allowed areas |
-| `exclude_geofences` | `list` | KML files defining no-go zones |
+| Parameter           | Type    | Description                      |
+|---------------------|---------|----------------------------------|
+| `vehicle_type`      | `str`   | "copter" or "rover"              |
+| `max_speed`         | `float` | Maximum allowed speed (m/s)      |
+| `min_speed`         | `float` | Minimum allowed speed (m/s)      |
+| `max_alt`           | `float` | Maximum altitude for copters (m) |
+| `min_alt`           | `float` | Minimum altitude for copters (m) |
+| `include_geofences` | `list`  | KML files defining allowed areas |
+| `exclude_geofences` | `list`  | KML files defining no-go zones   |
 
 ---
 
@@ -218,102 +217,3 @@ exclude_geofences:
 ```
 
 The drone must be inside at least one include geofence and outside all exclude geofences.
-
----
-
-## Example: Full Integration
-
-```python
-from aerpawlib.legacy import Drone, Coordinate, BasicRunner, entrypoint
-from aerpawlib.legacy.safetyChecker import SafetyCheckerClient
-
-class SafeMission(BasicRunner):
-    def __init__(self):
-        self.checker = SafetyCheckerClient("127.0.0.1", 14580)
-    
-    @entrypoint
-    async def run(self, drone: Drone):
-        # Verify safety checker is running
-        if not self.checker.checkServerStatus():
-            print("ERROR: Safety checker not running!")
-            return
-        
-        # Validate takeoff
-        pos = drone.position
-        if not self.checker.validateTakeoff(10, pos.lat, pos.lon):
-            print("Cannot take off at this location")
-            return
-        
-        await drone.takeoff(10)
-        
-        # Define waypoints
-        waypoints = [
-            Coordinate(35.7275, -78.6960, 10),
-            Coordinate(35.7280, -78.6955, 15),
-            Coordinate(35.7270, -78.6950, 10),
-        ]
-        
-        # Validate each waypoint before flying
-        for wp in waypoints:
-            if self.checker.validateWaypoint(drone.position, wp):
-                await drone.goto_coordinates(wp)
-            else:
-                print(f"Waypoint {wp} is outside geofence, skipping!")
-        
-        await drone.land()
-```
-
----
-
-## Troubleshooting
-
-### Server Not Starting
-
-```python
-# Check that config file exists and is valid
-import yaml
-with open("geofence_config.yaml") as f:
-    config = yaml.safe_load(f)
-    print(config)
-```
-
-### Connection Failed
-
-```python
-import zmq
-
-try:
-    client = SafetyCheckerClient("127.0.0.1", 14580)
-    client.checkServerStatus()
-except zmq.ZMQError as e:
-    print(f"Connection failed: {e}")
-```
-
-### Geofence Not Loading
-
-Check that:
-1. KML files exist in the same directory as the config
-2. KML files are valid XML
-3. Coordinates are in the correct format (lon,lat,alt)
-
----
-
-## Upgrading to v2
-
-The v2 API offers a more comprehensive safety system:
-
-```python
-# v2 with full safety features
-from aerpawlib.v2 import Drone, SafetyLimits, SafetyCheckerClient
-
-async with SafetyCheckerClient("localhost", 14580) as checker:
-    drone = Drone(
-        "udp://:14540",
-        safety_limits=SafetyLimits.restrictive(),
-        safety_checker=checker
-    )
-    # Pre-flight checks, battery failsafe, parameter validation all included
-```
-
-See the [v2 Safety Guide](../v2/safety.md) for details.
-

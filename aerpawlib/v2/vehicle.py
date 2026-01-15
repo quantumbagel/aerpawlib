@@ -469,7 +469,7 @@ class InfoContainer:
 
 
 class VehicleEvent(Enum):
-    """Vehicle events for type-safe callbacks."""
+    """Vehicle events for internal state tracking."""
 
     CONNECT = "on_connect"
     DISCONNECT = "on_disconnect"
@@ -482,9 +482,6 @@ class VehicleEvent(Enum):
     CRITICAL_BATTERY = "on_critical_battery"
     MODE_CHANGE = "on_mode_change"
     SAFETY_VIOLATION = "on_safety_violation"  # Illegal command blocked
-
-
-CallbackType = Callable[..., Any]
 
 
 class Vehicle:
@@ -530,9 +527,6 @@ class Vehicle:
         self._aborted = False
         self._last_heartbeat: float = 0.0
         self._max_reconnect_attempts: int = 3
-        self._callbacks: Dict[VehicleEvent, List[CallbackType]] = {
-            event: [] for event in VehicleEvent
-        }
         self._low_battery_triggered = False
         self._critical_battery_triggered = False
         self._heartbeat_monitor_task: Optional[asyncio.Task] = None
@@ -546,12 +540,6 @@ class Vehicle:
         # Connection handler for managing disconnections
         self._connection_handler: Optional[ConnectionHandler] = None
 
-    async def __aenter__(self) -> "Vehicle":
-        await self.connect()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.disconnect()
 
     async def connect(
         self,
@@ -945,23 +933,12 @@ class Vehicle:
     def clear_flight_log(self) -> None:
         self._flight_log.clear()
 
-    def on(self, event: VehicleEvent, callback: CallbackType) -> None:
-        self._callbacks[event].append(callback)
-
-    def off(self, event: VehicleEvent, callback: CallbackType) -> None:
-        if callback in self._callbacks[event]:
-            self._callbacks[event].remove(callback)
-
     async def _trigger_callbacks(
         self, event: VehicleEvent, *args, **kwargs
     ) -> None:
-        for cb in self._callbacks.get(event, []):
-            try:
-                result = cb(*args, **kwargs)
-                if asyncio.iscoroutine(result):
-                    await result
-            except Exception as e:
-                logger.error(f"Error in {event.value} callback: {e}")
+        """Internal event handler for logging vehicle state changes."""
+        # Log the event for debugging purposes
+        logger.debug(f"Vehicle event: {event.value} args={args} kwargs={kwargs}")
 
     async def wait_for_gps_fix(
         self, min_satellites: int = 6, timeout: float = 60.0
@@ -1258,10 +1235,12 @@ class Drone(Vehicle):
         - Safety pilots maintain RC override for manual intervention
 
     Example:
-        async with Drone(safety_limits=SafetyLimits.aerpaw_default()) as drone:
-            await drone.takeoff(altitude=10)
-            await drone.goto(latitude=35.727, longitude=-78.696)
-            await drone.land()
+        class MyMission(BasicRunner):
+            @entrypoint
+            async def run(self, drone: Drone):
+                await drone.takeoff(altitude=10)
+                await drone.goto(latitude=35.727, longitude=-78.696)
+                await drone.land()
     """
 
     def __init__(
