@@ -1,7 +1,33 @@
 """
 Safety checker client/server for aerpawlib v2 API.
 
-Provides ZMQ-based geofence validation through a client-server architecture.
+AERPAW Architecture Overview:
+----------------------------
+This module implements a client-server model for pre-validating vehicle commands:
+
+1. SafetyCheckerClient (runs in E-VM / experimenter script):
+   - Queries the SafetyCheckerServer to pre-validate commands BEFORE sending them
+   - This is OPTIONAL - commands can be sent directly without pre-validation
+   - Allows scripts to check if a command WILL be accepted before attempting it
+   - Example: Generate random waypoints and validate them before flying
+
+2. SafetyCheckerServer (runs in C-VM, NOT in experimenter code):
+   - Provides the validation logic for geofences, speed limits, altitude
+   - Receives queries from the client and returns validation results
+   - NOTE: The server code is included here for completeness but should be
+     deployed on the C-VM, not instantiated by experimenter scripts
+
+3. MAVLink Filter (external, in C-VM):
+   - The ACTUAL enforcement mechanism - sits between E-VM and autopilot
+   - Observes all MAVLink messages and blocks/allows based on safety rules
+   - If an illegal command is detected, it SEVERS the connection entirely
+   - This is what prevents unsafe operations - NOT the SafetyCheckerClient
+
+The SafetyCheckerClient is useful for experimenter scripts that want to:
+- Pre-validate waypoints before attempting navigation
+- Check if a speed change will be accepted
+- Avoid triggering a connection severance by the MAVLink filter
+
 ZMQ is a hard requirement for this module - it will fail fast if not available.
 """
 
@@ -50,15 +76,28 @@ def _deserialize_message(data: bytes) -> dict:
 
 class SafetyCheckerClient:
     """
-    Async client for the safety checker server.
+    Async client for querying the SafetyCheckerServer (runs in C-VM).
 
-    Provides geofence validation via a ZMQ connection to a SafetyCheckerServer.
+    This client allows experimenter scripts to PRE-VALIDATE commands before
+    sending them to the vehicle. This is useful for:
+    - Randomly generating waypoints and checking which are valid
+    - Avoiding triggering the MAVLink filter's connection severance
+    - Checking speed/altitude limits before commanding a change
+
+    IMPORTANT: This does NOT enforce safety. The MAVLink filter in the C-VM
+    is what actually blocks unsafe commands. Using this client is OPTIONAL -
+    you can send commands directly and the filter will block if unsafe.
+
+    The server address defaults to the C-VM IP (192.168.32.25) on port 14580.
 
     Example:
-        async with SafetyCheckerClient("localhost", 14580) as checker:
+        async with SafetyCheckerClient("192.168.32.25", 14580) as checker:
+            # Check if a waypoint is valid before flying there
             result = await checker.validate_waypoint(current, target)
-            if not result:
-                print(f"Blocked: {result.message}")
+            if result:
+                await vehicle.goto(target)
+            else:
+                print(f"Waypoint rejected: {result.message}")
     """
 
     def __init__(self, address: str = "localhost", port: int = 14580):
@@ -148,10 +187,21 @@ class SafetyCheckerServer:
     """
     Safety checker server that validates vehicle commands.
 
-    Validates commands based on geofence boundaries, speed limits, and altitude restrictions.
+    IMPORTANT: This server runs on the C-VM (Control VM), NOT in experimenter
+    scripts. It is included in aerpawlib for completeness but should be deployed
+    as part of the AERPAW platform infrastructure.
 
-    Example:
-        config = SafetyConfig.from_yaml("vehicle_config.yaml")
+    The server validates commands based on:
+    - Geofence boundaries (include/exclude polygons)
+    - Speed limits (min/max)
+    - Altitude restrictions (for copters)
+
+    The SafetyCheckerClient (in experimenter scripts) queries this server to
+    pre-validate commands. The MAVLink filter also uses this same validation
+    logic to decide whether to forward or block commands.
+
+    Deployment (C-VM only):
+        config = SafetyConfig.from_yaml("/path/to/vehicle_config.yaml")
         server = SafetyCheckerServer(config, port=14580)
         await server.serve()
     """

@@ -4,13 +4,34 @@ AERPAW platform integration for aerpawlib v2 API.
 This module provides async-first integration with the AERPAW platform,
 including OEO console logging and checkpoint functionality.
 
-The AERPAW class can be used as an async context manager for automatic
-connection handling.
+AERPAW Architecture Context:
+----------------------------
+The AERPAW platform has multiple VMs and safety layers:
+
+1. E-VM (Experiment VM): Where experimenter scripts (using aerpawlib) run
+2. C-VM (Control VM): Runs safety infrastructure including:
+   - SafetyCheckerServer: Validates commands against geofences/limits
+   - MAVLink Filter: Routes/blocks MAVLink messages between E-VM and autopilot
+   - OEO message relay to the console
+3. Autopilot: Handles low-level safety (battery failsafe RTL/LAND)
+
+This module (AERPAWPlatform) communicates with C-VM services to:
+- Send messages to the OEO console for operator visibility
+- Manage experiment checkpoints for multi-vehicle coordination
+
+Connection Loss Behavior:
+-------------------------
+If the MAVLink connection to the vehicle is lost (either hardware failure or
+the MAVLink filter severing the connection due to a safety violation), the
+experimenter script should send an OEO message and terminate. The Vehicle
+class can be configured with an AERPAWPlatform instance to automatically
+send disconnect notifications to OEO.
 
 Example:
     async with AERPAWPlatform() as platform:
+        vehicle = Vehicle(oeo_platform=platform)
+        await vehicle.connect()
         await platform.log_to_oeo("Starting mission")
-        await platform.checkpoint_set("mission_started")
 """
 
 from __future__ import annotations
@@ -799,6 +820,27 @@ class AERPAWPlatform:
             await self._request("POST", path, retry=False)
         except (AERPAWConnectionError, AERPAWRequestError):
             self._log_stdout("Unable to send previous message to OEO.")
+
+    async def log_connection_lost(self, reason: str = "unknown"):
+        """
+        Log a MAVLink connection loss event to the OEO console.
+
+        This should be called when the MAVLink connection to the vehicle is lost,
+        either due to hardware failure or the MAVLink filter severing the connection.
+
+        Per AERPAW design, after logging this message the experimenter script
+        should terminate - the safety pilots will handle the vehicle manually.
+
+        Args:
+            reason: Description of why connection was lost
+
+        Example:
+            await platform.log_connection_lost("Heartbeat timeout after 5.0s")
+            sys.exit(1)  # Terminate the script
+        """
+        message = f"MAVLink connection lost: {reason}"
+        logger.error(message)
+        await self.log_to_oeo(message, MessageSeverity.ERROR)
 
     # Checkpoint: Boolean Flags
 
