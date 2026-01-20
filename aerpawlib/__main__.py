@@ -28,7 +28,6 @@ import time
 from argparse import ArgumentParser
 from typing import Optional
 
-
 # Configure logging
 def setup_logging(
     verbose: bool = False,
@@ -178,9 +177,10 @@ def discover_runner(api_module, experimenter_script):
     return runner, flag_zmq_runner
 
 
-def run_v2_experiment(args, unknown_args, api_module, experimenter_script):
+def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start_time):
     """Run an experiment using the v2 API."""
     runner, flag_zmq_runner = discover_runner(api_module, experimenter_script)
+    logger.debug(f"Time after discover runner: {time.time() - start_time:.2f}s")
 
     Vehicle = getattr(api_module, "Vehicle")
     Drone = getattr(api_module, "Drone")
@@ -202,6 +202,7 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script):
     # Connection
     logger.info(f"Connecting to vehicle...")
     logger.debug(f"Connection string: {args.conn}")
+    logger.debug(f"Time before vehicle connection: {time.time() - start_time:.2f}s")
 
     async def create_and_connect():
         v = vehicle_type(args.conn)
@@ -220,6 +221,7 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script):
             )
         )
         logger.info("Vehicle connected successfully")
+        logger.debug(f"Time after vehicle connection: {time.time() - start_time:.2f}s")
     except Exception as e:
         logger.error(f"Failed to connect to vehicle: {e}")
         raise ConnectionError(f"Could not connect to vehicle: {e}")
@@ -399,9 +401,7 @@ def run_v1_experiment(
             args.zmq_identifier, args.zmq_server_addr
         )
 
-    logger.info("=" * 50)
     logger.info(f"Starting experiment execution ({version_name})")
-    logger.info("=" * 50)
 
     experiment_success = False
     try:
@@ -428,7 +428,6 @@ def run_v1_experiment(
 
 def main():
     """Main entry point for aerpawlib CLI."""
-
     # Import trick to allow things to work when run as "aerpawlib"
 
     current_file = os.path.abspath(__file__)
@@ -631,6 +630,10 @@ def main():
         log_file=args.log_file,
     )
 
+    # Start timing for performance debugging
+    global start_time
+    start_time = time.time()
+
     # Log startup information
     logger.info("aerpawlib - AERPAW Vehicle Control Library")
     logger.info("By John Kesler and Julian Reder")
@@ -647,6 +650,7 @@ def main():
     logger.debug(f"Loading API version: {api_version}")
     try:
         api_module = importlib.import_module(f"aerpawlib.{api_version}")
+        logger.debug(f"Time to import API module: {time.time() - start_time:.2f}s")
         # Inject into globals for backward compatibility in some scripts if needed
         for name in dir(api_module):
             if not name.startswith("_"):
@@ -667,13 +671,14 @@ def main():
     logger.debug(f"Loading experimenter script: {args.script}")
     try:
         experimenter_script = importlib.import_module(args.script)
+        logger.debug(f"Time to import experimenter script: {time.time() - start_time:.2f}s")
     except Exception as e:
         logger.error(f"Failed to import script '{args.script}': {e}")
         sys.exit(1)
 
     # Dispatch to version-specific runner
     if api_version == "v2":
-        run_v2_experiment(args, unknown_args, api_module, experimenter_script)
+        run_v2_experiment(args, unknown_args, api_module, experimenter_script, start_time)
     elif api_version == "v1":
         run_v1_experiment(
             args,

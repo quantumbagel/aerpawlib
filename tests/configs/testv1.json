@@ -1,7 +1,7 @@
-{"api-version": "v1",
+{"api-version": "legacy",
   "script":  "examples.legacy.basic_runner",
   "vehicle": "drone",
-  "conn": "udpin://127.0.0.1:14551",
+  "conn": "udp:127.0.0.1:14551",
   "debug": ""}
 
 

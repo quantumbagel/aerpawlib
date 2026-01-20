@@ -324,7 +324,6 @@ class Vehicle:
         """
         if not self.armed:
             await self._initialize_postarm()  # also contains logic to wait for arm
-
         while not self.done_moving():
             await asyncio.sleep(_POLLING_DELAY)
 
@@ -389,9 +388,7 @@ class Vehicle:
             await asyncio.sleep(_POLLING_DELAY)
 
         await asyncio.sleep(_ARMING_SEQUENCE_DELAY)
-
         self._vehicle.mode = dronekit.VehicleMode("GUIDED")
-
         await asyncio.sleep(_ARMING_SEQUENCE_DELAY)
 
         self._abortable = True
