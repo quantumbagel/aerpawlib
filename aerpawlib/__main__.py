@@ -512,8 +512,8 @@ def main():
     )
     core_grp.add_argument(
         "--api-version",
-        help="which API version to use (legacy, v1 or v2)",
-        choices=["legacy", "v1", "v2"],
+        help="which API version to use (v1 or v2)",
+        choices=["v1", "v2"],
         default="v1",
     )
 
@@ -686,14 +686,6 @@ def main():
             api_module,
             experimenter_script,
             version_name="v1",
-        )
-    elif api_version == "legacy":
-        run_v1_experiment(
-            args,
-            unknown_args,
-            api_module,
-            experimenter_script,
-            version_name="legacy",
         )
 
 

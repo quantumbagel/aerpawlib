@@ -41,20 +41,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Legacy/V1 dependencies (DroneKit-based)
-legacy = [
-    "dronekit>=2.9.2",
-    "pymavlink>=2.4.0",
-    "pyserial>=3.5",
-    "requests>=2.32.4",
-]
-
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
 ]
 all = [
-    "aerpawlib[legacy,v2,dev,docs]",
+    "aerpawlib[v2,dev,docs]",
 ]
 
 [project.urls]
@@ -108,4 +100,3 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
-

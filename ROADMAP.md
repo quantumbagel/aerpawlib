@@ -10,6 +10,5 @@ There are a number of features that are not currently implemented in aerpawlib b
   - Fix connection handling on quit, it seems to be an infinite loop because of the usage of signal
   - Improve documentation with more examples and tutorials
   - Better OEO integration features
-- legacy runner support
-- v1 initial release
+- v1 API improvements
   - OEO integration for v1 API
