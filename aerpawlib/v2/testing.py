@@ -93,7 +93,9 @@ class MockDrone:
     Implements VehicleProtocol for type safety.
     """
 
-    def __init__(self, connection: str = "mock://", oeo_platform: Optional[Any] = None):
+    def __init__(
+        self, connection: str = "mock://", oeo_platform: Optional[Any] = None
+    ):
         self._connection_string = connection
         self._oeo_platform = oeo_platform
         self._connected = False

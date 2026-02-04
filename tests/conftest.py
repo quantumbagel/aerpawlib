@@ -6,20 +6,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, AsyncGenerator
+from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 
-from aerpawlib.v1.vehicle import Drone
+from aerpawlib.v1.vehicle import Drone, Rover
 from aerpawlib.v1.util import Coordinate, VectorNED
-
-if TYPE_CHECKING:
-    pass
 
 # Constants
 DEFAULT_SITL_PORT = 14550
-SITL_GPS_TIMEOUT = 60  # seconds
+SITL_GPS_TIMEOUT = 120  # Increased for stability
 
 # AERPAW Lake Wheeler site coordinates
 LAKE_WHEELER_LAT = 35.727436
@@ -35,15 +32,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Register custom markers."""
-    config.addinivalue_line("markers", "unit: Unit tests with no external dependencies")
-    config.addinivalue_line("markers", "integration: Integration tests requiring SITL simulator")
-    config.addinivalue_line("markers", "slow: Tests that take a long time to run")
+    """Additional pytest configuration."""
+    pass
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Auto-apply markers based on test directory."""
     for item in items:
-        path_str = str(item.fspath)
+        path_str = str(item.path)
         if "/unit/" in path_str:
             item.add_marker(pytest.mark.unit)
         elif "/integration/" in path_str:
@@ -88,11 +83,8 @@ async def connected_drone(
     # Wait for GPS fix (fix_type >= 3 = 3D fix)
     start = time.monotonic()
     while time.monotonic() - start < SITL_GPS_TIMEOUT:
-        try:
-            if drone.gps.fix_type >= 3:
-                break
-        except Exception:
-            pass
+        if drone.gps.fix_type >= 3:
+            break
         await asyncio.sleep(0.5)
     else:
         drone.close()
@@ -106,9 +98,26 @@ async def connected_drone(
         # This ensures parameters/missions etc are reset
         await drone._run_on_mavsdk_loop(drone._system.action.reboot())
         # Wait for the command to be sent and vehicle to start rebooting
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
     except Exception as e:
         print(f"Warning: Failed to reboot drone: {e}")
     finally:
         drone.close()
+
+@pytest_asyncio.fixture(scope="function")
+async def connected_rover(
+    sitl_connection_string: str,
+) -> AsyncGenerator[Rover, None]:
+    """
+    Provide a connected Rover instance for integration testing.
+    """
+    rover = await asyncio.to_thread(Rover, sitl_connection_string)
+    yield rover
+    try:
+        await rover._run_on_mavsdk_loop(rover._system.action.reboot())
+        await asyncio.sleep(2)
+    except Exception:
+        pass
+    finally:
+        rover.close()
 

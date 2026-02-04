@@ -12,6 +12,7 @@ __author__ = "John Kesler and Julian Reder"
 _v1_loaded = False
 _loading = False
 
+
 def __getattr__(name):
     global _v1_loaded, _loading
     if _loading:
@@ -20,9 +21,10 @@ def __getattr__(name):
         _loading = True
         try:
             from . import v1
+
             # Import all from v1 into globals
             for attr in dir(v1):
-                if not attr.startswith('_'):
+                if not attr.startswith("_"):
                     globals()[attr] = getattr(v1, attr)
             _v1_loaded = True
         finally:

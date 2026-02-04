@@ -11,6 +11,7 @@ infrastructure:
 This monitor provides warnings and logging but does NOT enforce RTL
 or other safety actions - those are delegated to the autopilot/C-VM.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -73,7 +74,9 @@ class SafetyMonitor:
             self._task = None
         logger.info("Safety monitor stopped")
 
-    def on_violation(self, violation: SafetyViolationType, callback: Callable) -> None:
+    def on_violation(
+        self, violation: SafetyViolationType, callback: Callable
+    ) -> None:
         """Register a callback for a specific violation type."""
         if violation not in self._callbacks:
             self._callbacks[violation] = []
@@ -105,7 +108,7 @@ class SafetyMonitor:
         if speed > self._limits.max_speed * 1.1:  # 10% tolerance
             await self._trigger_violation(
                 SafetyViolationType.SPEED_TOO_HIGH,
-                f"Speed {speed:.1f}m/s exceeds maximum {self._limits.max_speed}m/s"
+                f"Speed {speed:.1f}m/s exceeds maximum {self._limits.max_speed}m/s",
             )
 
     async def _check_battery(self) -> None:
@@ -131,7 +134,7 @@ class SafetyMonitor:
                 )
                 await self._trigger_violation(
                     SafetyViolationType.BATTERY_CRITICAL,
-                    f"CRITICAL BATTERY: {battery_pct:.1f}% - Autopilot failsafe expected"
+                    f"CRITICAL BATTERY: {battery_pct:.1f}% - Autopilot failsafe expected",
                 )
 
         elif battery_pct <= self._limits.min_battery_percent:
@@ -139,10 +142,12 @@ class SafetyMonitor:
                 self._low_battery_warned = True
                 await self._trigger_violation(
                     SafetyViolationType.BATTERY_LOW,
-                    f"Low battery warning: {battery_pct:.1f}% - Consider landing soon"
+                    f"Low battery warning: {battery_pct:.1f}% - Consider landing soon",
                 )
 
-    async def _trigger_violation(self, violation: SafetyViolationType, message: str) -> None:
+    async def _trigger_violation(
+        self, violation: SafetyViolationType, message: str
+    ) -> None:
         """Trigger a safety violation."""
         logger.warning(f"SAFETY: {message}")
 
@@ -162,4 +167,3 @@ class SafetyMonitor:
 
 
 __all__ = ["SafetyMonitor"]
-

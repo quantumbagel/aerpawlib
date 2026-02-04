@@ -13,12 +13,10 @@ import logging
 import math
 import time
 import threading
-from typing import Callable, Optional, List, TYPE_CHECKING
+from typing import Callable, Optional, List
 
 from mavsdk import System
-from mavsdk.offboard import PositionNedYaw, VelocityNedYaw, OffboardError
 from mavsdk.action import ActionError
-from mavsdk.telemetry import FlightMode as MavFlightMode
 
 
 from aerpawlib.v1 import util
@@ -31,43 +29,27 @@ from aerpawlib.v1.constants import (
     ARMABLE_TIMEOUT_S,
     ARMABLE_STATUS_LOG_INTERVAL_S,
     DEFAULT_POSITION_TOLERANCE_M,
-    DEFAULT_ROVER_POSITION_TOLERANCE_M,
-    DEFAULT_TAKEOFF_ALTITUDE_TOLERANCE,
-    POST_TAKEOFF_STABILIZATION_S,
-    HEADING_TOLERANCE_DEG,
-    VELOCITY_UPDATE_DELAY_S,
     VERBOSE_LOG_FILE_PREFIX,
     VERBOSE_LOG_DELAY_S,
-    HEARTBEAT_TIMEOUT_S,
-    WAITING_FOR_ARM_LOG_INTERVAL_S,
-    POST_GUIDED_DELAY_S,
 )
 from aerpawlib.v1.exceptions import (
-    MAVSDKNotInstalledError,
     ConnectionTimeoutError,
     ArmError,
     DisarmError,
-    TakeoffError,
-    LandingError,
-    NavigationError,
-    VelocityError,
-    RTLError,
     NotArmableError,
     NotImplementedForVehicleError,
-    HeartbeatLostError,
 )
 from aerpawlib.v1.helpers import (
     wait_for_condition,
-    validate_tolerance,
-    validate_altitude,
     validate_speed,
-    normalize_heading,
-    heading_difference,
     ThreadSafeValue,
 )
 
 # Configure module logger
 logger = logging.getLogger(__name__)
+
+# Suppress noisy grpc logs
+logging.getLogger("_cython.cygrpc").setLevel(logging.WARNING)
 
 
 class _BatteryCompat:
@@ -232,7 +214,7 @@ class Vehicle:
     # Safety initialization state
     _initialization_complete: bool = False
     _skip_init: bool = False  # Set via CLI --skip-init flag
-    _skip_rtl: bool = False   # Set via CLI --skip-rtl flag
+    _skip_rtl: bool = False  # Set via CLI --skip-rtl flag
 
     # Connection/heartbeat tracking
     _last_heartbeat_time: float = 0.0
@@ -297,7 +279,9 @@ class Vehicle:
                 for task in pending:
                     task.cancel()
                 if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
                 loop.close()
 
         # Start connection in background thread
@@ -353,7 +337,7 @@ class Vehicle:
 
         async def _position_update():
             async for position in self._system.telemetry.position():
-                #print(position)
+                # print(position)
                 self._position_lat.set(position.latitude_deg)
                 self._position_lon.set(position.longitude_deg)
                 self._position_alt.set(position.relative_altitude_m)
@@ -361,7 +345,7 @@ class Vehicle:
 
         async def _attitude_update():
             async for attitude in self._system.telemetry.attitude_euler():
-                #print(attitude)
+                # print(attitude)
                 self._attitude.roll = math.radians(attitude.roll_deg)
                 self._attitude.pitch = math.radians(attitude.pitch_deg)
                 self._attitude.yaw = math.radians(attitude.yaw_deg)
@@ -369,36 +353,36 @@ class Vehicle:
 
         async def _velocity_update():
             async for velocity in self._system.telemetry.velocity_ned():
-                #print(velocity)
+                # print(velocity)
                 self._velocity_ned.set(
                     [velocity.north_m_s, velocity.east_m_s, velocity.down_m_s]
                 )
 
         async def _gps_update():
             async for gps_info in self._system.telemetry.gps_info():
-                #print(gps_info)
+                # print(gps_info)
                 self._gps.satellites_visible = gps_info.num_satellites
                 self._gps.fix_type = gps_info.fix_type.value
 
         async def _battery_update():
             async for battery in self._system.telemetry.battery():
-                #print(battery)
+                # print(battery)
                 self._battery.voltage = battery.voltage_v
                 self._battery.level = int(battery.remaining_percent)
 
         async def _flight_mode_update():
             async for mode in self._system.telemetry.flight_mode():
-                #print(mode)
+                # print(mode)
                 self._mode.set(mode.name)
 
         async def _armed_update():
             async for armed in self._system.telemetry.armed():
-                #print(armed)
+                # print(armed)
                 self._armed_state.set(armed)
 
         async def _health_update():
             async for health in self._system.telemetry.health():
-                #print(health)
+                # print(health)
                 self._is_armable_state.set(
                     health.is_global_position_ok
                     and health.is_home_position_ok
@@ -407,7 +391,7 @@ class Vehicle:
 
         async def _home_update():
             async for home in self._system.telemetry.home():
-                #print(home)
+                # print(home)
                 self._home_position = util.Coordinate(
                     home.latitude_deg,
                     home.longitude_deg,
@@ -621,7 +605,7 @@ class Vehicle:
             task.cancel()
 
         if self._mavsdk_loop and self._mavsdk_loop.is_running():
-            self._mavsdk_loop.call_soon_threadsafe(self._mavsdk_loop.stop)
+            self._mavsdk_loop.call_soon_threadsafe(self._mavsdk_loop.stop, *())
 
     async def set_armed(self, value: bool) -> None:
         """

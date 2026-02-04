@@ -1,6 +1,7 @@
 """
 Rover vehicle implementation.
 """
+
 import logging
 import time
 from typing import Optional
@@ -25,6 +26,7 @@ from aerpawlib.v1.helpers import (
 from aerpawlib.v1.vehicles.core_vehicle import Vehicle
 
 logger = logging.getLogger(__name__)
+
 
 class Rover(Vehicle):
     """
@@ -90,7 +92,7 @@ class Rover(Vehicle):
                 lambda: at_coords(self),
                 poll_interval=POLLING_DELAY_S,
                 timeout=300,
-                timeout_message=f"Rover failed to reach destination {coordinates} within 300s"
+                timeout_message=f"Rover failed to reach destination {coordinates} within 300s",
             )
             logger.debug(
                 f"Arrived at destination, distance: {coordinates.ground_distance(self.position)}m"

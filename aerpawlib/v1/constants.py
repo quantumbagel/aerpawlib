@@ -5,7 +5,6 @@ All timing, tolerance, and configuration values should be defined here
 for easy tuning and documentation.
 """
 
-
 # =============================================================================
 # Connection Constants
 # =============================================================================
@@ -44,7 +43,6 @@ DEFAULT_RTL_ON_END = True
 
 # Default skip initialization behavior (False = perform all safety checks)
 DEFAULT_SKIP_INIT = False
-
 
 
 # Movement Constants

@@ -9,23 +9,23 @@ This module now aggregates the split implementations:
 
 # Re-export from split files
 from aerpawlib.v1.vehicles.core_vehicle import (
-    Vehicle, 
+    Vehicle,
     DummyVehicle,
     _BatteryCompat,
     _GPSInfoCompat,
     _AttitudeCompat,
-    _VersionCompat
+    _VersionCompat,
 )
 from aerpawlib.v1.vehicles.drone import Drone
 from aerpawlib.v1.vehicles.rover import Rover
 
 __all__ = [
-    "Vehicle", 
-    "DummyVehicle", 
-    "Drone", 
+    "Vehicle",
+    "DummyVehicle",
+    "Drone",
     "Rover",
     "_BatteryCompat",
     "_GPSInfoCompat",
     "_AttitudeCompat",
-    "_VersionCompat"
+    "_VersionCompat",
 ]

@@ -603,10 +603,7 @@ class AERPAWPlatform:
         self._session: Optional["aiohttp.ClientSession"] = None
 
         # OEO Client for notifications
-        self.oeo_client = OEOClient(
-            address=cvm_address,
-            port=DEFAULT_OEO_PORT
-        )
+        self.oeo_client = OEOClient(address=cvm_address, port=DEFAULT_OEO_PORT)
 
     @property
     def connected(self) -> bool:

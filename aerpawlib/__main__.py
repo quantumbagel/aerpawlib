@@ -28,6 +28,7 @@ import time
 from argparse import ArgumentParser
 from typing import Optional
 
+
 # Configure logging
 def setup_logging(
     verbose: bool = False,
@@ -177,7 +178,9 @@ def discover_runner(api_module, experimenter_script):
     return runner, flag_zmq_runner
 
 
-def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start_time):
+def run_v2_experiment(
+    args, unknown_args, api_module, experimenter_script, start_time
+):
     """Run an experiment using the v2 API."""
     runner, flag_zmq_runner = discover_runner(api_module, experimenter_script)
     logger.debug(
@@ -209,7 +212,9 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
         try:
             from grpc.aio import AioRpcError
         except ImportError:
-            class AioRpcError(Exception): pass
+
+            class AioRpcError(Exception):
+                pass
 
         # AERPAW Platform init
         aerpaw_platform = (
@@ -229,7 +234,9 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
 
         def handle_shutdown(signum, frame):
             sig_name = signal.Signals(signum).name
-            logger.warning(f"Received {sig_name}, initiating graceful shutdown...")
+            logger.warning(
+                f"Received {sig_name}, initiating graceful shutdown..."
+            )
             # We can't easily await here in a synchronous signal handler
             # In a single-loop asyncio application, it's better to let
             # KeyboardInterrupt or CancelledError handle the cleanup, or
@@ -261,7 +268,9 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
                         args.zmq_identifier, args.zmq_server_addr
                     )
                 else:
-                    logger.warning("Runner does not support ZMQ bindings in v2")
+                    logger.warning(
+                        "Runner does not support ZMQ bindings in v2"
+                    )
 
             logger.info("=" * 50)
             logger.info("Starting experiment execution (v2)")
@@ -274,7 +283,9 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
             except KeyboardInterrupt:
                 logger.warning("Experiment interrupted by user")
                 if vehicle.armed:
-                    logger.warning("Vehicle is armed, attempting emergency landing...")
+                    logger.warning(
+                        "Vehicle is armed, attempting emergency landing..."
+                    )
                     try:
                         await vehicle._system.action.land()
                         logger.info("Emergency landing command sent")
@@ -286,15 +297,29 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
                 err_msg = str(e)
                 logger.error(f"Experiment failed: {err_msg}")
 
-                if isinstance(e, AioRpcError) or "Socket closed" in err_msg or "UNAVAILABLE" in err_msg:
+                if (
+                    isinstance(e, AioRpcError)
+                    or "Socket closed" in err_msg
+                    or "UNAVAILABLE" in err_msg
+                ):
                     connection_lost = True
-                    logger.critical("MAVLink connection severed! Experiment aborted.")
+                    logger.critical(
+                        "MAVLink connection severed! Experiment aborted."
+                    )
                     if aerpaw_platform:
                         try:
                             await aerpaw_platform.log_connection_lost(err_msg)
                         except:
                             pass
-                elif isinstance(e, (ConnectionResetError, BrokenPipeError, TimeoutError, asyncio.TimeoutError)):
+                elif isinstance(
+                    e,
+                    (
+                        ConnectionResetError,
+                        BrokenPipeError,
+                        TimeoutError,
+                        asyncio.TimeoutError,
+                    ),
+                ):
                     connection_lost = True
 
             # RTL/Cleanup if not connection lost
@@ -319,12 +344,16 @@ def run_v2_experiment(args, unknown_args, api_module, experimenter_script, start
                         hasattr(vehicle, "_mission_start_time")
                         and vehicle._mission_start_time
                     ):
-                        duration = int(time.time() - vehicle._mission_start_time)
+                        duration = int(
+                            time.time() - vehicle._mission_start_time
+                        )
                         msg = f"Mission took {duration // 60:02d}:{duration % 60:02d}"
                         logger.info(msg)
                         if aerpaw_platform:
                             try:
-                                await aerpaw_platform.log_to_oeo(f"[aerpawlib] {msg}")
+                                await aerpaw_platform.log_to_oeo(
+                                    f"[aerpawlib] {msg}"
+                                )
                             except:
                                 pass
                 except:
@@ -666,7 +695,9 @@ def main():
     logger.debug(f"Loading API version: {api_version}")
     try:
         api_module = importlib.import_module(f"aerpawlib.{api_version}")
-        logger.debug(f"Time to import API module: {time.time() - start_time:.2f}s")
+        logger.debug(
+            f"Time to import API module: {time.time() - start_time:.2f}s"
+        )
         # Inject into globals for backward compatibility in some scripts if needed
         for name in dir(api_module):
             if not name.startswith("_"):
@@ -687,14 +718,18 @@ def main():
     logger.debug(f"Loading experimenter script: {args.script}")
     try:
         experimenter_script = importlib.import_module(args.script)
-        logger.debug(f"Time to import experimenter script: {time.time() - start_time:.2f}s")
+        logger.debug(
+            f"Time to import experimenter script: {time.time() - start_time:.2f}s"
+        )
     except Exception as e:
         logger.error(f"Failed to import script '{args.script}': {e}")
         sys.exit(1)
 
     # Dispatch to version-specific runner
     if api_version == "v2":
-        run_v2_experiment(args, unknown_args, api_module, experimenter_script, start_time)
+        run_v2_experiment(
+            args, unknown_args, api_module, experimenter_script, start_time
+        )
     elif api_version == "v1":
         run_v1_experiment(
             args,

@@ -64,9 +64,14 @@ class ConnectionTimeoutError(ConnectionError):
 class HeartbeatLostError(ConnectionError):
     """Raised when the vehicle heartbeat is lost."""
 
-    def __init__(self, last_heartbeat_age: float = 0.0, message: Optional[str] = None):
+    def __init__(
+        self, last_heartbeat_age: float = 0.0, message: Optional[str] = None
+    ):
         self.last_heartbeat_age = last_heartbeat_age
-        msg = message or f"Vehicle heartbeat lost (last heartbeat {last_heartbeat_age:.1f}s ago)"
+        msg = (
+            message
+            or f"Vehicle heartbeat lost (last heartbeat {last_heartbeat_age:.1f}s ago)"
+        )
         super().__init__(msg)
 
 

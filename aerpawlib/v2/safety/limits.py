@@ -1,6 +1,7 @@
 """
 Safety limits configuration for aerpawlib v2 API.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -31,12 +32,13 @@ class SafetyLimits:
     enforce RTL or other actions. The limits are also used by validation
     functions to clamp values and provide helpful error messages.
     """
+
     # Speed limits (for local validation/clamping)
-    max_speed: float = 15.0           # m/s horizontal
-    max_vertical_speed: float = 5.0   # m/s vertical
+    max_speed: float = 15.0  # m/s horizontal
+    max_vertical_speed: float = 5.0  # m/s vertical
 
     # Battery limits (for warnings only - autopilot handles actual failsafe)
-    min_battery_percent: float = 20.0      # warning threshold
+    min_battery_percent: float = 20.0  # warning threshold
     critical_battery_percent: float = 10.0  # critical warning threshold
 
     # GPS requirements
@@ -62,7 +64,9 @@ class SafetyLimits:
         if not 0 <= self.critical_battery_percent <= 100:
             errors.append("critical_battery_percent must be between 0 and 100")
         if self.critical_battery_percent >= self.min_battery_percent:
-            errors.append("critical_battery_percent must be less than min_battery_percent")
+            errors.append(
+                "critical_battery_percent must be less than min_battery_percent"
+            )
         if self.min_satellites < 0:
             errors.append("min_satellites cannot be negative")
         return errors
@@ -114,6 +118,7 @@ class SafetyLimits:
 @dataclass
 class SafetyConfig:
     """Safety configuration loaded from YAML for the safety checker server."""
+
     vehicle_type: VehicleType
     max_speed: float
     min_speed: float
@@ -133,16 +138,26 @@ class SafetyConfig:
         with config_path.open("r") as f:
             config = yaml.safe_load(f)
 
-        required = ["vehicle_type", "max_speed", "min_speed", "include_geofences", "exclude_geofences"]
+        required = [
+            "vehicle_type",
+            "max_speed",
+            "min_speed",
+            "include_geofences",
+            "exclude_geofences",
+        ]
         for param in required:
             if param not in config:
-                raise ValueError(f"Required parameter '{param}' not found in {config_path}")
+                raise ValueError(
+                    f"Required parameter '{param}' not found in {config_path}"
+                )
 
         try:
             vehicle_type = VehicleType(config["vehicle_type"])
         except ValueError:
             valid_types = [t.value for t in VehicleType]
-            raise ValueError(f"Invalid vehicle_type '{config['vehicle_type']}'. Must be one of {valid_types}")
+            raise ValueError(
+                f"Invalid vehicle_type '{config['vehicle_type']}'. Must be one of {valid_types}"
+            )
 
         max_alt, min_alt = None, None
         if vehicle_type == VehicleType.COPTER:
@@ -153,8 +168,12 @@ class SafetyConfig:
             max_alt = float(config["max_alt"])
             min_alt = float(config["min_alt"])
 
-        include_geofences = [read_geofence(config_dir / f) for f in config["include_geofences"]]
-        exclude_geofences = [read_geofence(config_dir / f) for f in config["exclude_geofences"]]
+        include_geofences = [
+            read_geofence(config_dir / f) for f in config["include_geofences"]
+        ]
+        exclude_geofences = [
+            read_geofence(config_dir / f) for f in config["exclude_geofences"]
+        ]
 
         return cls(
             vehicle_type=vehicle_type,
@@ -168,4 +187,3 @@ class SafetyConfig:
 
 
 __all__ = ["SafetyLimits", "SafetyConfig"]
-
