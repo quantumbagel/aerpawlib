@@ -122,6 +122,7 @@ class _State:
         _name (str): The name of the state.
         _func (_Runnable): The function to be executed for this state.
     """
+
     _name: str
     _func: _Runnable
 

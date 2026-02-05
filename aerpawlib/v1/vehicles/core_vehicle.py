@@ -49,8 +49,6 @@ from aerpawlib.v1.helpers import (
 logger = logging.getLogger(__name__)
 
 
-
-
 class _BatteryCompat:
     """
     Compatibility wrapper to match dronekit.Battery interface.

@@ -223,6 +223,7 @@ class SafetyCheckerServer:
         min_alt (float, optional): Minimum allowed altitude for copters.
         takeoff_location (Coordinate): The location where takeoff was performed.
     """
+
     # valid vehicle types
     VEHICLE_TYPES = ["rover", "copter"]
     # parameters required for all vehicle types
