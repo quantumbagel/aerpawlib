@@ -15,16 +15,16 @@ or other safety actions - those are delegated to the autopilot/C-VM.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Callable, Dict, List, Optional, Set, TYPE_CHECKING
 
+from ..logging import get_logger, LogComponent
 from .types import SafetyViolationType
 from .limits import SafetyLimits
 
 if TYPE_CHECKING:
     from ..vehicle import Vehicle
 
-logger = logging.getLogger("aerpawlib.safety")
+logger = get_logger(LogComponent.SAFETY)
 
 
 class SafetyMonitor:

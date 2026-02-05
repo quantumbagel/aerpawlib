@@ -84,7 +84,7 @@ def run_zmq_proxy(config: Optional[ZMQProxyConfig] = None):
     p_pub.bind(f"tcp://{config.bind_address}:{config.out_port}")
 
     logger.info(
-        f"[aerpawlib] Launching ZMQ proxy on ports {config.in_port}/{config.out_port}"
+        f"Launching ZMQ proxy on ports {config.in_port}/{config.out_port}"
     )
 
     try:

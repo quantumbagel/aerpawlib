@@ -4,18 +4,16 @@ Parameter validation functions for aerpawlib v2 API.
 
 from __future__ import annotations
 
-import logging
 import math
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
+from ..logging import get_logger, LogComponent
 from .types import SafetyViolationType, SafetyCheckResult, PreflightCheckResult
 from .limits import SafetyLimits
 
-if TYPE_CHECKING:
-    from ..vehicle import Vehicle
-    from ..types import Coordinate, VectorNED
+from ..vehicle import Vehicle
 
-logger = logging.getLogger("aerpawlib.safety")
+logger = get_logger(LogComponent.SAFETY)
 
 
 def _validate_number(

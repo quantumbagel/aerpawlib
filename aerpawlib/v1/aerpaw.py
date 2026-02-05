@@ -11,10 +11,18 @@ functionality.
 import base64
 import requests
 
+from ..v2.logging import get_logger, LogComponent
+
+logger = get_logger(LogComponent.AERPAW)
+oeo_logger = get_logger(LogComponent.OEO)
+
 from .constants import (
     DEFAULT_CVM_IP,
     DEFAULT_CVM_PORT,
     OEO_MSG_SEV_INFO,
+    OEO_MSG_SEV_WARN,
+    OEO_MSG_SEV_ERR,
+    OEO_MSG_SEV_CRIT,
     OEO_MSG_SEVS,
 )
 
@@ -81,9 +89,7 @@ class AERPAW:
         if self._connection_warning_displayed:
             return
         if not self._no_stdout:
-            print(
-                "[aerpawlib] INFO: the user script has attempted to use AERPAW platform functionality without being in the AERPAW environment"
-            )
+            logger.info("the user script has attempted to use AERPAW platform functionality without being in the AERPAW environment")
         self._connection_warning_displayed = True
 
     def log_to_oeo(self, msg: str, severity: str = OEO_MSG_SEV_INFO):
@@ -100,7 +106,17 @@ class AERPAW:
             Exception: If the provided severity is not supported.
         """
         if not self._no_stdout:
-            print(msg)
+            if severity == OEO_MSG_SEV_INFO:
+                oeo_logger.info(msg)
+            elif severity == OEO_MSG_SEV_WARN:
+                oeo_logger.warning(msg)
+            elif severity == OEO_MSG_SEV_ERR:
+                oeo_logger.error(msg)
+            elif severity == OEO_MSG_SEV_CRIT:
+                oeo_logger.critical(msg)
+            else:
+                oeo_logger.info(msg)
+
         if not self._connected:
             self._display_connection_warning()
             return
@@ -115,7 +131,7 @@ class AERPAW:
             )
         except requests.exceptions.RequestException:
             if not self._no_stdout:
-                print("unable to send previous message to OEO.")
+                logger.error("unable to send previous message to OEO.")
 
     def _checkpoint_build_request(self, var_type, var_name):
         """

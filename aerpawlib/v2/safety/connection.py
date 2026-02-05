@@ -21,19 +21,17 @@ safety infrastructure. Key principles:
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional
 
+from ..logging import get_logger, LogComponent
 from .types import DisconnectReason
 from ..aerpaw import OEOClient
+from ..vehicle import Vehicle
 
-if TYPE_CHECKING:
-    from ..vehicle import Vehicle
-
-logger = logging.getLogger("aerpawlib.connection")
+logger = get_logger(LogComponent.CONNECTION)
 
 
 class ConnectionState(Enum):

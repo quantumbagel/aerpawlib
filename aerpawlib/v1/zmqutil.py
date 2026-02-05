@@ -4,16 +4,16 @@ ZMQ Proxy utility for aerpawlib. Unchanged from legacy version.
 @author: John Kesler (morzack)
 """
 
-import logging
 import zmq
 
+from ..v2.logging import get_logger, LogComponent
 from .constants import (
     ZMQ_PROXY_IN_PORT,
     ZMQ_PROXY_OUT_PORT,
 )
 
 # Configure logger
-logger = logging.getLogger(__name__)
+logger = get_logger(LogComponent.ZMQ)
 
 
 def run_zmq_proxy():
