@@ -66,28 +66,13 @@ class TestDroneArming:
     """Tests for drone arming."""
 
     @pytest.mark.asyncio
-    async def test_drone_can_arm(self, connected_drone):
-        """Test drone can be armed."""
-        await connected_drone.set_armed(True)
-        assert connected_drone.armed is True
-
-    @pytest.mark.asyncio
-    async def test_drone_can_disarm(self, connected_drone):
-        """Test drone can be disarmed."""
-        # First arm
-        await connected_drone.set_armed(True)
-        assert connected_drone.armed is True
-
-        # Then disarm
-        await connected_drone.set_armed(False)
-
-        # Wait for disarm
-        timeout = 10
-        start = time.time()
-        while connected_drone.armed and (time.time() - start) < timeout:
-            await asyncio.sleep(0.1)
-
+    async def test_drone_arms_before_takeoff(self, connected_drone):
+        """Test drone arms automatically when takeoff is called."""
         assert connected_drone.armed is False
+        # Takeoff will trigger _initialize_postarm which arms
+        await connected_drone.takeoff(5)
+        assert connected_drone.armed is True
+        await connected_drone.land()
 
 
 class TestDroneTakeoff:

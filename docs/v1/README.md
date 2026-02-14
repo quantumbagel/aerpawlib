@@ -177,21 +177,21 @@ from aerpawlib.v1 import SafetyCheckerClient
 client = SafetyCheckerClient("127.0.0.1", 14580)
 
 # Check server status
-status = client.checkServerStatus()
+status = client.check_server_status()
 print(f"Server running: {status}")
 
 # Validate a waypoint
-result = client.validateWaypoint(current_pos, target_pos)
+result = client.validate_waypoint_command(current_pos, target_pos)
 if not result:
     print("Waypoint outside geofence!")
 
 # Validate speed
-result = client.validateSpeed(15.0)
+result = client.validate_change_speed_command(15.0)
 if not result:
     print("Speed exceeds limit!")
 
 # Validate takeoff
-result = client.validateTakeoff(altitude=10, lat=35.7, lon=-78.6)
+result = client.validate_takeoff_command(altitude=10, lat=35.7, lon=-78.6)
 ```
 
 ### Configuration File Format
@@ -556,7 +556,7 @@ from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
 ```
 
 
-That's it! All other code remains unchanged.
-
 > Note that compatible versions of datastructures (_GPSInfoCompat) do not inherit from their DroneKit counterparts, so type assertions will fail. If you were relying on type assertions, you're probably doing something wrong.
+
+
 
