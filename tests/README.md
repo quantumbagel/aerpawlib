@@ -1,6 +1,6 @@
 # aerpawlib Test Suite
 
-Pytest-based tests for aerpawlib v1 API. **SITL is managed by pytest** for integration tests: it starts ArduPilot SITL before tests and stops it after. A full SITL reset (disarm, clear mission, battery reset) runs between each integration test.
+Pytest-based tests for aerpawlib v1 API. See [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md) for contributor testing guidelines. **SITL is managed by pytest** for integration tests: it starts ArduPilot SITL before tests and stops it after. A full SITL reset (disarm, clear mission, battery reset) runs between each integration test.
 
 ## Structure
 
@@ -24,7 +24,7 @@ tests/
 1. **Unit tests**: `pip install pytest pytest-asyncio`
 2. **Integration tests**: ArduPilot SITL
    - Run `./install_ardupilot.sh` or set `ARDUPILOT_HOME` to your ArduPilot clone
-   - Pytest will start `sim_vehicle.py -v ArduCopter` automatically
+   - Pytest starts ArduCopter SITL for drone tests and ArduRover SITL for rover tests (separate ports)
 
 ## Running Tests
 
@@ -45,18 +45,22 @@ pytest -m integration -v
 ```
 
 Pytest will:
-1. Start ArduPilot SITL on port 14550 (or `--sitl-port`)
-2. Run integration tests
-3. Perform full SITL reset between each test
-4. Stop SITL when done
+1. Start ArduCopter SITL on port 14550 for drone tests (or `--sitl-port-drone`)
+2. Start Rover SITL on port 14560 for rover tests (or `--sitl-port-rover`)
+3. Run integration tests (only starts SITLs for the vehicle types being tested)
+4. Perform full SITL reset between each test
+5. Stop SITL when done
 
 ### Use external SITL (pytest does not start/stop)
 
 ```bash
-# Terminal 1: start SITL manually
+# Terminal 1: start drone SITL
 sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:14550 --no-mavproxy -w
 
-# Terminal 2: run tests
+# Terminal 2: start rover SITL (if running rover tests)
+sim_vehicle.py -v ArduRover --out=udp:127.0.0.1:14560 --no-mavproxy -w
+
+# Terminal 3: run tests
 pytest tests/integration/ -v --no-sitl
 ```
 
@@ -64,7 +68,9 @@ pytest tests/integration/ -v --no-sitl
 
 | Option | Description |
 |--------|-------------|
-| `--sitl-port PORT` | UDP port for SITL (default: 14550) |
+| `--sitl-port PORT` | Legacy: UDP port for drone SITL (default: 14550) |
+| `--sitl-port-drone PORT` | UDP port for ArduCopter SITL (default: 14550) |
+| `--sitl-port-rover PORT` | UDP port for ArduRover SITL (default: 14560) |
 | `--no-sitl` | Do not start SITL; use externally running instance |
 | `--sitl-manage` | Pytest starts/stops SITL (default: True) |
 
@@ -78,3 +84,12 @@ pytest tests/integration/ -v --no-sitl
 
 - `unit` – unit tests (auto-applied to `tests/unit/`)
 - `integration` – integration tests (auto-applied to `tests/integration/`)
+
+## Troubleshooting
+
+### "Mode change to GUIDED failed: requires position"
+
+This occurs when starting an experiment before SITL has fully initialized. The library now waits for GPS 3D fix before arming in standalone/SITL mode. If you still see this:
+
+1. **Wait for SITL to fully start** – Give SITL 10–15 seconds after `sim_vehicle.py` reports "Ready to FLY" before running your script.
+2. **Use external SITL** – Run SITL in a separate terminal first, then run your experiment with `--no-sitl` (for pytest) or after SITL is ready.

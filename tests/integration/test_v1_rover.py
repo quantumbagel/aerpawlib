@@ -1,4 +1,4 @@
-"""Integration tests for aerpawlib v1 Rover. Requires ArduRover SITL (use --no-sitl and start externally)."""
+"""Integration tests for aerpawlib v1 Rover. Requires ArduRover SITL (managed by pytest on port 14560)."""
 
 import pytest
 
@@ -23,7 +23,7 @@ class TestRoverConnection:
 
 
 class TestRoverNavigation:
-    """Rover navigation. Skips if SITL is ArduCopter (rover needs ArduRover)."""
+    """Rover navigation."""
 
     @pytest.mark.asyncio
     async def test_goto_coordinates(self, connected_rover):
@@ -34,4 +34,4 @@ class TestRoverNavigation:
         target = start + VectorNED(20, 0)
         await connected_rover.goto_coordinates(target, tolerance=3)
         dist = connected_rover.position.ground_distance(target)
-        assert dist < 5
+        assert dist < 5 

@@ -2,7 +2,9 @@
 Rover vehicle implementation.
 """
 
-from aerpawlib.v1.log import get_logger, LogComponent
+import asyncio
+
+from aerpawlib.log import get_logger, LogComponent
 import time
 from typing import Optional
 
@@ -15,6 +17,7 @@ from aerpawlib.v1 import util
 from aerpawlib.v1.constants import (
     POLLING_DELAY_S,
     DEFAULT_ROVER_POSITION_TOLERANCE_M,
+    DEFAULT_GOTO_TIMEOUT_S,
 )
 from aerpawlib.v1.exceptions import (
     NavigationError,
@@ -44,6 +47,7 @@ class Rover(Vehicle):
         coordinates: util.Coordinate,
         tolerance: float = DEFAULT_ROVER_POSITION_TOLERANCE_M,
         target_heading: Optional[float] = None,
+        timeout: Optional[int] = DEFAULT_GOTO_TIMEOUT_S,
     ) -> None:
         """
         Make the vehicle go to provided coordinates.
@@ -52,6 +56,7 @@ class Rover(Vehicle):
             coordinates: Target position
             tolerance: Distance in meters to consider destination reached
             target_heading: Ignored for rovers (they can't strafe)
+            timeout: Timeout in seconds for mavsdk action to complete (default: DEFAULT_GOTO_TIMEOUT_S)
 
         Raises:
             ValueError: If tolerance is out of acceptable range
@@ -64,6 +69,20 @@ class Rover(Vehicle):
             f"tolerance={tolerance}, target_heading={target_heading}) called"
         )
         await self.await_ready_to_move()
+
+        # FIX: Rovers must be in HOLD/GUIDED mode before goto_location
+        # will be accepted by ArduPilot. Unlike drones, where takeoff()
+        # implicitly enters GUIDED mode, rovers go straight from arming
+        # to goto_coordinates(). Without this, the rover stays in
+        # MANUAL/STABILIZE mode and goto_location is silently ignored.
+        try:
+            await self._run_on_mavsdk_loop(
+                self._system.action.hold()
+            )
+            await asyncio.sleep(0.5)  # Let mode transition settle
+        except ActionError as e:
+            logger.warning(f"Could not set HOLD mode: {e}")
+
         self._ready_to_move = lambda _: False
 
         if self._mission_start_time is None:
@@ -92,8 +111,8 @@ class Rover(Vehicle):
             await wait_for_condition(
                 lambda: self._ready_to_move(self),
                 poll_interval=POLLING_DELAY_S,
-                timeout=300,
-                timeout_message=f"Rover failed to reach destination {coordinates} within 300s",
+                timeout=timeout,
+                timeout_message=f"Rover failed to reach destination {coordinates} within {timeout}s",
             )
             logger.debug(
                 f"Arrived at destination, distance: {coordinates.ground_distance(self.position)}m"

@@ -8,7 +8,7 @@ to maintain backward compatibility with existing code.
 """
 
 import json
-from .log import get_logger, LogComponent
+from aerpawlib.log import get_logger, LogComponent
 import os
 import zlib
 from argparse import ArgumentParser

@@ -6,7 +6,7 @@ This is the v1 version of the external process utilities.
 """
 
 import asyncio
-from typing import List
+from typing import List, Optional
 import re
 
 
@@ -63,7 +63,7 @@ class ExternalProcess:
             stdin=None if self._stdin is not None else asyncio.subprocess.PIPE,
         )
 
-    async def read_line(self) -> str | None:
+    async def read_line(self) -> Optional[str]:
         """
         Read one line from the stdout buffer.
 

@@ -31,36 +31,37 @@ exclude_geofences:
 ### 2. Start the Server
 
 ```bash
-# From command line
-python -c "from aerpawlib.v1.safetyChecker import SafetyCheckerServer; SafetyCheckerServer('geofence_config.yaml', 14580).start_server()"
+# From command line (recommended)
+python -m aerpawlib.v1.safety --port 14580 --vehicle_config geofence_config.yaml
 ```
 
 Or in Python:
 
 ```python
-from aerpawlib.v1.safetyChecker import SafetyCheckerServer
+from aerpawlib.v1.safety import SafetyCheckerServer
 
 server = SafetyCheckerServer("geofence_config.yaml", server_port=14580)
-server.start_server()  # Blocks
+# Constructor blocks; server runs until terminated
 ```
 
 ### 3. Connect from Your Script
 
 ```python
-from aerpawlib.v1.safetyChecker import SafetyCheckerClient
+from aerpawlib.v1.safety import SafetyCheckerClient
 
 client = SafetyCheckerClient("127.0.0.1", 14580)
 
-# Check server status
-if client.checkServerStatus():
+# Check server status (returns (result, message) tuple)
+ok, msg = client.check_server_status()
+if ok:
     print("Server is running")
 
-# Validate waypoint before flying
-result = client.validateWaypoint(current_pos, target_pos)
-if result:
+# Validate waypoint before flying (returns (result, message) tuple)
+ok, msg = client.validate_waypoint_command(current_pos, target_pos)
+if ok:
     print("Waypoint is valid")
 else:
-    print("Waypoint outside geofence!")
+    print(f"Waypoint outside geofence: {msg}")
 ```
 
 ---
@@ -70,11 +71,11 @@ else:
 ### Initialization
 
 ```python
-from aerpawlib.v1.safetyChecker import SafetyCheckerServer
+from aerpawlib.v1.safety import SafetyCheckerServer
 
-# Create server with YAML config
+# Create server with YAML config (blocks until terminated)
 server = SafetyCheckerServer(
-    vehicle_config="geofence_config.yaml",
+    "geofence_config.yaml",
     server_port=14580
 )
 ```
@@ -109,24 +110,29 @@ The server validates:
 ### Initialization
 
 ```python
-from aerpawlib.v1.safetyChecker import SafetyCheckerClient
+from aerpawlib.v1.safety import SafetyCheckerClient
 
 client = SafetyCheckerClient(
-    server_address="127.0.0.1",
-    server_port=14580
+    addr="127.0.0.1",
+    port=14580
 )
 ```
 
 ### Methods
 
-#### `checkServerStatus() -> bool`
+#### `check_server_status() -> Tuple[bool, str]`
+
+Returns `(result, message)`. Use `result` to check success.
 
 ```python
-if client.checkServerStatus():
+ok, msg = client.check_server_status()
+if ok:
     print("Server is running")
 ```
 
-#### `validateWaypoint(current: Coordinate, target: Coordinate) -> bool`
+#### `validate_waypoint_command(curLoc: Coordinate, nextLoc: Coordinate) -> Tuple[bool, str]`
+
+Returns `(result, message)`. Call before `goto_coordinates`.
 
 ```python
 from aerpawlib.v1 import Coordinate
@@ -134,23 +140,26 @@ from aerpawlib.v1 import Coordinate
 current = Coordinate(35.7275, -78.6960, 10)
 target = Coordinate(35.7280, -78.6955, 15)
 
-if client.validateWaypoint(current, target):
+ok, msg = client.validate_waypoint_command(current, target)
+if ok:
     await drone.goto_coordinates(target)
 else:
-    print("Target is outside geofence!")
+    print(f"Target outside geofence: {msg}")
 ```
 
-#### `validateSpeed(speed: float) -> bool`
+#### `validate_change_speed_command(newSpeed: float) -> Tuple[bool, str]`
 
 ```python
-if client.validateSpeed(15.0):
+ok, msg = client.validate_change_speed_command(15.0)
+if ok:
     await drone.set_groundspeed(15.0)
 ```
 
-#### `validateTakeoff(altitude: float, lat: float, lon: float) -> bool`
+#### `validate_takeoff_command(takeoffAlt: float, currentLat: float, currentLon: float) -> Tuple[bool, str]`
 
 ```python
-if client.validateTakeoff(10, drone.position.lat, drone.position.lon):
+ok, msg = client.validate_takeoff_command(10, drone.position.lat, drone.position.lon)
+if ok:
     await drone.takeoff(10)
 ```
 
@@ -198,7 +207,7 @@ The safety checker uses ZMQ REQ/REP pattern with zlib-compressed JSON messages.
 
 ```python
 from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint
-from aerpawlib.v1.safetyChecker import SafetyCheckerClient
+from aerpawlib.v1.safety import SafetyCheckerClient
 
 class SafeMission(BasicRunner):
     def __init__(self):
@@ -207,14 +216,16 @@ class SafeMission(BasicRunner):
     @entrypoint
     async def run(self, drone: Drone):
         # Verify safety checker is running
-        if not self.checker.checkServerStatus():
-            print("ERROR: Safety checker not running!")
+        ok, msg = self.checker.check_server_status()
+        if not ok:
+            print(f"ERROR: Safety checker not running: {msg}")
             return
         
         # Validate takeoff
         pos = drone.position
-        if not self.checker.validateTakeoff(10, pos.lat, pos.lon):
-            print("Cannot take off at this location")
+        ok, msg = self.checker.validate_takeoff_command(10, pos.lat, pos.lon)
+        if not ok:
+            print(f"Cannot take off: {msg}")
             return
         
         await drone.takeoff(10)
@@ -227,10 +238,11 @@ class SafeMission(BasicRunner):
         
         # Validate each waypoint before flying
         for wp in waypoints:
-            if self.checker.validateWaypoint(drone.position, wp):
+            ok, msg = self.checker.validate_waypoint_command(drone.position, wp)
+            if ok:
                 await drone.goto_coordinates(wp)
             else:
-                print(f"Waypoint {wp} is outside geofence!")
+                print(f"Waypoint {wp} outside geofence: {msg}")
                 break
         
         await drone.land()
@@ -244,11 +256,10 @@ class SafeMission(BasicRunner):
 
 ```python
 from multiprocessing import Process
-from aerpawlib.v1.safetyChecker import SafetyCheckerServer
+from aerpawlib.v1.safety import SafetyCheckerServer
 
 def run_server():
-    server = SafetyCheckerServer("config.yaml", 14580)
-    server.start_server()
+    SafetyCheckerServer("config.yaml", 14580)  # Blocks
 
 # Start server in background
 server_process = Process(target=run_server, daemon=True)
@@ -260,8 +271,10 @@ server_process.start()
 ### Using screen (Linux)
 
 ```bash
-screen -dmS safety_checker python -c "from aerpawlib.v1.safetyChecker import SafetyCheckerServer; SafetyCheckerServer('config.yaml', 14580).start_server()"
+screen -dmS safety_checker python -m aerpawlib.v1.safety --port 14580 --vehicle_config config.yaml
 ```
+
+> **Note**: `aerpawlib.v1.safetyChecker` is a deprecated alias for `aerpawlib.v1.safety`. Use `safety` for new code.
 
 ---
 

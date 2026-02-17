@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import socket
 import subprocess
@@ -21,8 +20,14 @@ from typing import AsyncGenerator, Optional
 import pytest
 import pytest_asyncio
 
+from aerpawlib.log import LogComponent, LogLevel, configure_logging, get_logger
+
+logger = get_logger(LogComponent.SITL)
+
 # Constants
 DEFAULT_SITL_PORT = 14550
+DEFAULT_SITL_PORT_DRONE = 14550
+DEFAULT_SITL_PORT_ROVER = 14560
 SITL_STARTUP_TIMEOUT = 90
 SITL_GPS_TIMEOUT = 120
 LAKE_WHEELER_LAT = 35.727436
@@ -32,17 +37,21 @@ LAKE_WHEELER_LON = -78.696587
 def _find_sim_vehicle() -> Optional[Path]:
     """Locate sim_vehicle.py from ARDUPILOT_HOME or common paths."""
     project_root = Path(__file__).resolve().parent.parent
+    # Check for both 'ardupilot' and versioned directories like 'ardupilot-4.6.3'
+    ardupilot_dirs = list(project_root.glob("ardupilot*"))
+
     candidates = [
         os.environ.get("ARDUPILOT_HOME"),
-        project_root / "ardupilot",
-        project_root / "ardupilot-4.6.3",
-    ]
+    ] + [str(d) for d in ardupilot_dirs if d.is_dir()]
+
+    logger.debug(f"Searching for sim_vehicle.py in candidates: {candidates}")
     for base in candidates:
         if base is None:
             continue
         base = Path(base)
         script = base / "Tools" / "autotest" / "sim_vehicle.py"
         if script.exists():
+            logger.info(f"Found sim_vehicle.py at {script}")
             return script
     return None
 
@@ -64,7 +73,19 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--sitl-port",
         action="store",
         default=str(DEFAULT_SITL_PORT),
-        help=f"UDP port for SITL (default: {DEFAULT_SITL_PORT})",
+        help=f"UDP port for SITL (legacy, applies to drone; default: {DEFAULT_SITL_PORT})",
+    )
+    parser.addoption(
+        "--sitl-port-drone",
+        action="store",
+        default=None,
+        help=f"UDP port for ArduCopter SITL (default: {DEFAULT_SITL_PORT_DRONE})",
+    )
+    parser.addoption(
+        "--sitl-port-rover",
+        action="store",
+        default=None,
+        help=f"UDP port for ArduRover SITL (default: {DEFAULT_SITL_PORT_ROVER})",
     )
     parser.addoption(
         "--no-sitl",
@@ -81,7 +102,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Pytest configuration."""
-    logging.getLogger("aerpawlib").setLevel(logging.DEBUG)
+    configure_logging(level=LogLevel.DEBUG, root_name="aerpawlib")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
@@ -131,8 +152,9 @@ class SITLManager:
     Starts SITL, provides connection string, performs full reset between tests.
     """
 
-    def __init__(self, port: int, manage: bool = True):
+    def __init__(self, port: int, vehicle_type: str = "ArduCopter", manage: bool = True):
         self.port = port
+        self.vehicle_type = vehicle_type
         self.manage = manage
         self._process: Optional[subprocess.Popen] = None
         self._sim_vehicle_path: Optional[Path] = None
@@ -140,13 +162,14 @@ class SITLManager:
     def start(self) -> str:
         """Start SITL and return connection string."""
         if not self.manage:
+            logger.info(f"Using external SITL at udpin://127.0.0.1:{self.port}")
             return f"udpin://127.0.0.1:{self.port}"
 
         sim_vehicle = _find_sim_vehicle()
         if sim_vehicle is None:
-            pytest.skip(
-                "sim_vehicle.py not found. Set ARDUPILOT_HOME or run install_ardupilot.sh"
-            )
+            msg = "sim_vehicle.py not found. Set ARDUPILOT_HOME or ensure ardupilot directory exists."
+            logger.error(msg)
+            pytest.skip(msg)
 
         self._sim_vehicle_path = sim_vehicle
         ardupilot_home = sim_vehicle.parent.parent.parent
@@ -158,57 +181,113 @@ class SITLManager:
         cmd = [
             sys.executable,
             str(sim_vehicle),
-            "-v", "ArduCopter",
+            "-v", self.vehicle_type,
             "--out", f"udp:127.0.0.1:{self.port}",
             "--no-mavproxy",
             "-w",
         ]
 
-        print(f"\n[SITL] Starting ArduPilot SITL on port {self.port}...")
+        logger.info(f"Starting SITL with command: {' '.join(cmd)}")
+        logger.info(f"SITL Working Directory: {ardupilot_home}")
+
+        # Capture SITL output to a log file for debugging
+        sitl_log_path = Path("logs/sitl_output.log")
+        sitl_log_path.parent.mkdir(exist_ok=True)
+        self._sitl_log = open(sitl_log_path, "w")
+
         self._process = subprocess.Popen(
             cmd,
             cwd=str(ardupilot_home),
             env=env,
-            stdout=subprocess.DEVNULL if not os.environ.get("SITL_VERBOSE") else None,
-            stderr=subprocess.STDOUT if not os.environ.get("SITL_VERBOSE") else None,
+            stdout=self._sitl_log,
+            stderr=subprocess.STDOUT,
         )
+
+        logger.debug(f"SITL process PID: {self._process.pid}")
+        logger.info(f"Waiting for MAVLink port {self.port} (timeout {SITL_STARTUP_TIMEOUT}s)...")
 
         # Wait for MAVLink port
         start = time.monotonic()
         while time.monotonic() - start < SITL_STARTUP_TIMEOUT:
             if _port_available("127.0.0.1", self.port):
-                print(f"[SITL] Ready on udpin://127.0.0.1:{self.port}")
+                logger.info(f"SITL Ready on udpin://127.0.0.1:{self.port}")
                 return f"udpin://127.0.0.1:{self.port}"
+
+            # Check if process died
+            if self._process.poll() is not None:
+                self._sitl_log.close()
+                with open(sitl_log_path, "r") as f:
+                    output = f.read()
+                msg = f"SITL process exited prematurely with code {self._process.returncode}. Output:\n{output}"
+                logger.error(msg)
+                pytest.fail(msg)
+
             time.sleep(1)
 
         self.stop()
-        pytest.fail(f"SITL failed to start within {SITL_STARTUP_TIMEOUT}s")
+        msg = f"SITL failed to start within {SITL_STARTUP_TIMEOUT}s. Check {sitl_log_path} for details."
+        logger.error(msg)
+        pytest.fail(msg)
 
     def stop(self) -> None:
         """Stop SITL process."""
         if self._process is not None:
+            logger.info("Stopping SITL...")
             try:
                 self._process.terminate()
                 self._process.wait(timeout=10)
             except subprocess.TimeoutExpired:
+                logger.warning("SITL didn't terminate, killing...")
                 self._process.kill()
             self._process = None
-            print("[SITL] Stopped")
+            if hasattr(self, '_sitl_log'):
+                self._sitl_log.close()
+            logger.info("SITL Stopped")
 
     def connection_string(self) -> str:
         """Return MAVLink connection string."""
         return f"udpin://127.0.0.1:{self.port}"
 
 
-# Session-scoped SITL: started once, shared across all integration tests
+def _get_sitl_port_drone(config) -> int:
+    """Resolve drone SITL port: --sitl-port-drone or --sitl-port or default."""
+    port_opt = config.getoption("--sitl-port-drone", default=None)
+    if port_opt is not None:
+        return int(port_opt)
+    return int(config.getoption("--sitl-port", default=DEFAULT_SITL_PORT_DRONE))
+
+
+def _get_sitl_port_rover(config) -> int:
+    """Resolve rover SITL port: --sitl-port-rover or default."""
+    port_opt = config.getoption("--sitl-port-rover", default=None)
+    if port_opt is not None:
+        return int(port_opt)
+    return DEFAULT_SITL_PORT_ROVER
+
+
+# Session-scoped SITL: started once per vehicle type, shared across integration tests
 @pytest.fixture(scope="session")
-def sitl_manager(request: pytest.FixtureRequest) -> SITLManager:
-    """Session-scoped SITL manager. Starts SITL once for all integration tests."""
-    port = int(request.config.getoption("--sitl-port", default=DEFAULT_SITL_PORT))
+def sitl_manager_drone(request: pytest.FixtureRequest) -> SITLManager:
+    """Session-scoped ArduCopter SITL manager for drone tests."""
+    port = _get_sitl_port_drone(request.config)
     no_sitl = request.config.getoption("--no-sitl", default=False)
     manage = request.config.getoption("--sitl-manage", default=True) and not no_sitl
 
-    manager = SITLManager(port=port, manage=manage)
+    manager = SITLManager(port=port, vehicle_type="ArduCopter", manage=manage)
+    if manage:
+        manager.start()
+        request.addfinalizer(manager.stop)
+    return manager
+
+
+@pytest.fixture(scope="session")
+def sitl_manager_rover(request: pytest.FixtureRequest) -> SITLManager:
+    """Session-scoped ArduRover SITL manager for rover tests."""
+    port = _get_sitl_port_rover(request.config)
+    no_sitl = request.config.getoption("--no-sitl", default=False)
+    manage = request.config.getoption("--sitl-manage", default=True) and not no_sitl
+
+    manager = SITLManager(port=port, vehicle_type="ArduRover", manage=manage)
     if manage:
         manager.start()
         request.addfinalizer(manager.stop)
@@ -216,9 +295,15 @@ def sitl_manager(request: pytest.FixtureRequest) -> SITLManager:
 
 
 @pytest.fixture
-def sitl_connection_string(sitl_manager: SITLManager) -> str:
-    """Connection string for SITL."""
-    return sitl_manager.connection_string()
+def sitl_connection_string_drone(sitl_manager_drone: SITLManager) -> str:
+    """Connection string for drone SITL."""
+    return sitl_manager_drone.connection_string()
+
+
+@pytest.fixture
+def sitl_connection_string_rover(sitl_manager_rover: SITLManager) -> str:
+    """Connection string for rover SITL."""
+    return sitl_manager_rover.connection_string()
 
 
 # ---------------------------------------------------------------------------
@@ -249,9 +334,10 @@ async def _full_sitl_reset(vehicle) -> None:
         except Exception:
             pass
         try:
+            # long BATTERY_RESET 1 100
             fields = {
                 "target_system": 1, "target_component": 1,
-                "command": 501, "confirmation": 0,
+                "command": 42651, "confirmation": 0,
                 "param1": 1.0, "param2": 100.0,
                 "param3": 0.0, "param4": 0.0,
                 "param5": 0.0, "param6": 0.0, "param7": 0.0,
@@ -305,11 +391,11 @@ async def _connect_and_wait_gps(vehicle_class, connection_string: str, timeout: 
 
 
 @pytest_asyncio.fixture
-async def connected_drone(sitl_connection_string: str) -> AsyncGenerator:
+async def connected_drone(sitl_connection_string_drone: str) -> AsyncGenerator:
     """Drone connected to SITL. Full reset before each test."""
     from aerpawlib.v1.vehicle import Drone
 
-    drone = await _connect_and_wait_gps(Drone, sitl_connection_string)
+    drone = await _connect_and_wait_gps(Drone, sitl_connection_string_drone)
     yield drone
     try:
         await _full_sitl_reset(drone)
@@ -318,11 +404,11 @@ async def connected_drone(sitl_connection_string: str) -> AsyncGenerator:
 
 
 @pytest_asyncio.fixture
-async def connected_rover(sitl_connection_string: str) -> AsyncGenerator:
+async def connected_rover(sitl_connection_string_rover: str) -> AsyncGenerator:
     """Rover connected to SITL. Full reset before each test."""
     from aerpawlib.v1.vehicle import Rover
 
-    rover = await _connect_and_wait_gps(Rover, sitl_connection_string)
+    rover = await _connect_and_wait_gps(Rover, sitl_connection_string_rover)
     yield rover
     try:
         await _full_sitl_reset(rover)

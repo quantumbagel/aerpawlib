@@ -14,7 +14,7 @@ from urllib.parse import quote as url_quote
 
 import requests
 
-from .log import get_logger, LogComponent
+from aerpawlib.log import get_logger, LogComponent
 
 logger = get_logger(LogComponent.AERPAW)
 oeo_logger = get_logger(LogComponent.OEO)

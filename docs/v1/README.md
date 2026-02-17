@@ -152,24 +152,21 @@ The v1 API includes the same safety checker as the legacy API for geofence valid
 
 Run the safety checker server in a separate process:
 
+```bash
+python -m aerpawlib.v1.safety --port 14580 --vehicle_config geofence_config.yaml
+```
+
+Or in Python (constructor blocks):
+
 ```python
 from aerpawlib.v1 import SafetyCheckerServer
 
-# Create server with config file
-server = SafetyCheckerServer("geofence_config.yaml", server_port=14580)
-
-# Start serving (blocks)
-server.start_server()
-```
-
-Or from command line:
-```bash
-python -c "from aerpawlib.v1.safetyChecker import SafetyCheckerServer; SafetyCheckerServer('config.yaml', 14580).start_server()"
+SafetyCheckerServer("geofence_config.yaml", server_port=14580)
 ```
 
 ### SafetyCheckerClient
 
-Connect to the safety checker from your script:
+Connect to the safety checker from your script. All validation methods return `(result: bool, message: str)`.
 
 ```python
 from aerpawlib.v1 import SafetyCheckerClient
@@ -177,21 +174,22 @@ from aerpawlib.v1 import SafetyCheckerClient
 client = SafetyCheckerClient("127.0.0.1", 14580)
 
 # Check server status
-status = client.check_server_status()
-print(f"Server running: {status}")
+ok, msg = client.check_server_status()
+if not ok:
+    print("Safety checker not running")
 
 # Validate a waypoint
-result = client.validate_waypoint_command(current_pos, target_pos)
-if not result:
-    print("Waypoint outside geofence!")
+ok, msg = client.validate_waypoint_command(current_pos, target_pos)
+if not ok:
+    print(f"Waypoint outside geofence: {msg}")
 
 # Validate speed
-result = client.validate_change_speed_command(15.0)
-if not result:
-    print("Speed exceeds limit!")
+ok, msg = client.validate_change_speed_command(15.0)
+if not ok:
+    print(f"Speed exceeds limit: {msg}")
 
 # Validate takeoff
-result = client.validate_takeoff_command(altitude=10, lat=35.7, lon=-78.6)
+ok, msg = client.validate_takeoff_command(altitude=10, lat=35.7, lon=-78.6)
 ```
 
 ### Configuration File Format
@@ -461,23 +459,21 @@ from aerpawlib.v1 import Drone, Coordinate, BasicRunner, entrypoint, SafetyCheck
 class SafeFlight(BasicRunner):
     @entrypoint
     async def run(self, drone: Drone):
-        # Connect to safety checker
         checker = SafetyCheckerClient("127.0.0.1", 14580)
         
-        if not checker.checkServerStatus():
+        ok, msg = checker.check_server_status()
+        if not ok:
             print("Safety checker not running!")
             return
         
         await drone.takeoff(10)
         
         target = Coordinate(35.7275, -78.6960, 10)
-        
-        # Validate before flying
-        current = drone.position
-        if checker.validateWaypoint(current, target):
+        ok, msg = checker.validate_waypoint_command(drone.position, target)
+        if ok:
             await drone.goto_coordinates(target)
         else:
-            print("Target outside geofence, aborting!")
+            print(f"Target outside geofence: {msg}")
             await drone.land()
             return
         

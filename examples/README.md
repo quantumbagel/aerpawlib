@@ -1,4 +1,6 @@
-# aerpawlib Starter Profiles
+# aerpawlib Examples
+
+> **Documentation**: See [docs/USER_GUIDE.md](../docs/USER_GUIDE.md) for workflows and [docs/README.md](../docs/README.md) for the full documentation index.
 
 ## Squareoff with Logging
 
@@ -111,32 +113,28 @@ least `duration` seconds.
 
 ---
 
-# aerpawlib Examples
-
-This directory contains example scripts demonstrating how to use aerpawlib for drone control.
-
 ## Directory Structure
 
 ```
 examples/
-├── v1/                      # v1 API examples (MAVSDK-based, DroneKit-compatible interface)
+├── v1/                      # v1 API examples (MAVSDK-based, DroneKit-compatible)
 │   ├── basic_example.py         # Simple square flight pattern
-│   ├── circle_flight.py         # Circular flight using velocity control
-│   ├── figure_eight.py          # Figure-8 pattern with waypoints
-│   ├── state_machine_logging.py # StateMachine with background logging
-│   ├── survey_grid.py           # Lawnmower survey pattern
-│   └── waypoint_mission.py      # Load and fly .plan file missions
-├── v2/                      # v2 API examples (Modern Pythonic interface)
+│   └── figure_eight.py          # Figure-8 pattern with waypoints
+├── v2/                      # v2 API examples (modern, async-first)
 │   ├── basic_example.py         # Simple mission with telemetry
 │   ├── command_handle_example.py # Non-blocking command execution
 │   ├── enhanced_example.py      # Advanced features
-│   ├── logging_example.py       # Custom logging configuration
-│   └── state_machine_example.py # StateMachine pattern
-└── legacy/                  # Legacy DroneKit-based examples (should still be compatible with v1 runner)
-    ├── basic_runner.py
-    ├── circle.py
-    ├── squareoff_logging.py
-    └── ...
+│   ├── state_machine_example.py # StateMachine pattern
+│   └── test_runner.py           # Test runner
+└── legacy/                  # Legacy examples (compatible with v1 runner)
+    ├── basic_runner.py          # Minimal BasicRunner
+    ├── circle.py               # Circular flight
+    ├── squareoff_logging.py    # StateMachine + background logging
+    ├── preplanned_trajectory.py # Load .plan file
+    ├── external_runner.py       # ExternalProcess usage
+    ├── hide_rover.py
+    ├── zmq_runner/              # Leader/follower ZMQ
+    └── zmq_preplanned_orbit/    # Multi-drone orbit mission
 ```
 
 ## Running Examples
@@ -145,43 +143,47 @@ examples/
 
 ```bash
 # Basic square flight
-python -m aerpawlib --api v1 --script examples.v1.basic_example \
+python -m aerpawlib --api-version v1 --script examples.v1.basic_example \
     --vehicle drone --conn udp:127.0.0.1:14550
 
-# Circle flight with custom parameters
-python -m aerpawlib --api v1 --script examples.v1.circle_flight \
-    --vehicle drone --conn udp:127.0.0.1:14550 \
-    --radius 20 --velocity 3 --laps 3
+# Figure-8 pattern
+python -m aerpawlib --api-version v1 --script examples.v1.figure_eight \
+    --vehicle drone --conn udp:127.0.0.1:14550
+```
 
-# Survey grid pattern
-python -m aerpawlib --api v1 --script examples.v1.survey_grid \
-    --vehicle drone --conn udp:127.0.0.1:14550 \
-    --width 50 --height 50 --spacing 10
+### Legacy Examples (v1 runner)
 
-# State machine with logging
-python -m aerpawlib --api v1 --script examples.v1.state_machine_logging \
-    --vehicle drone --conn udp:127.0.0.1:14550 \
-    --output flight_log.csv --samplerate 10
+```bash
+# Basic runner
+python -m aerpawlib --script examples.legacy.basic_runner \
+    --vehicle drone --conn udp:127.0.0.1:14550
 
-# Waypoint mission from .plan file
-python -m aerpawlib --api v1 --script examples.v1.waypoint_mission \
-    --vehicle drone --conn udp:127.0.0.1:14550 \
-    --plan mission.plan
+# Squareoff with logging
+python -m aerpawlib --script examples.legacy.squareoff_logging \
+    --vehicle drone --conn udp:127.0.0.1:14550
+
+# Preplanned trajectory from .plan file
+python -m aerpawlib --script examples.legacy.preplanned_trajectory \
+    --vehicle drone --conn udp:127.0.0.1:14550 --plan mission.plan
+
+# Circle flight
+python -m aerpawlib --script examples.legacy.circle \
+    --vehicle drone --conn udp:127.0.0.1:14550
 ```
 
 ### v2 API Examples
 
 ```bash
 # Basic example
-python -m aerpawlib --api v2 --script examples.v2.basic_example \
+python -m aerpawlib --api-version v2 --script examples.v2.basic_example \
     --vehicle drone --conn udp:127.0.0.1:14550
 
 # State machine example
-python -m aerpawlib --api v2 --script examples.v2.state_machine_example \
+python -m aerpawlib --api-version v2 --script examples.v2.state_machine_example \
     --vehicle drone --conn udp:127.0.0.1:14550
 
 # Non-blocking command handles
-python -m aerpawlib --api v2 --script examples.v2.command_handle_example \
+python -m aerpawlib --api-version v2 --script examples.v2.command_handle_example \
     --vehicle drone --conn udp:127.0.0.1:14550
 ```
 

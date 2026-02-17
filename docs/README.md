@@ -1,27 +1,26 @@
 # aerpawlib Documentation
 
-Welcome to the aerpawlib documentation. aerpawlib is a Python library for autonomous vehicle control within the
-[AERPAW](https://aerpaw.org) environment. 
-## API Versions
+Welcome to the aerpawlib documentation. aerpawlib is a Python library for autonomous vehicle control within the [AERPAW](https://aerpaw.org) platform.
 
-aerpawlib offers three API versions to accommodate different needs:
+## Documentation Index
+
+| Document | Audience | Description |
+|----------|----------|-------------|
+| [User Guide](USER_GUIDE.md) | All users | Overview of supported workflows, features, and how to run missions |
+| [Development Guide](DEVELOPMENT.md) | Contributors | Project structure, testing, coding conventions |
+| [v1 API Reference](v1/README.md) | v1 users | Full v1 API documentation (MAVSDK, DroneKit-compatible) |
+| [v2 API Reference](v2/README.md) | v2 users | v2 API documentation (modern, async-first) |
+| [v1 Safety Checker](v1/safety_checker.md) | v1 users | Geofence validation and safety server/client |
+| [v1 Architecture](v1/compromises.md) | Developers | v1 design tradeoffs and dual-loop architecture |
+| [Roadmap](ROADMAP.md) | All | Planned features and improvements |
 
 
-| Version                    | Backend  | Recommended For                          |
-|----------------------------|----------|------------------------------------------|
-| [v2](v2/README.md)         | MAVSDK   | Nothing currently as it is very buggy :D |
-| [v1](v1/README.md)         | MAVSDK   | No API changes. Still has major bugs.    |
-| [legacy](legacy/README.md) | DroneKit | Still use for most projects.             |
+## Quick Links
 
-
-## Quick Comparison
-
-| Feature               | Legacy                      | v1              | v2             |
-|-----------------------|-----------------------------|-----------------|----------------|
-| Backend               | DroneKit                    | MAVSDK          | MAVSDK         |
-| Python                | 3.7-3.10 (patched to 3.10+) | 3.9+            | 3.9+           |
-| Async Support         | Some components             | Some components | All components |
-
+- [User Guide → Quick Start](USER_GUIDE.md#quick-start)
+- [User Guide → Running Scripts](USER_GUIDE.md#running-scripts)
+- [examples/](../examples/) directory
+- [tests/README.md](../tests/README.md)
 
 ## Installation
 
@@ -29,22 +28,15 @@ aerpawlib offers three API versions to accommodate different needs:
 pip install -e .
 ```
 
-## Examples
-
-See the [`examples/`](../examples/) directory for working examples:
-
-- [`examples/v2/`](../examples/v2/) - v2 API examples
-- [`examples/v1/`](../examples/v1/) - v1 API examples
-- [`examples/legacy/`](../examples/legacy/) - Legacy API examples
-
 ## Connection Strings
 
-All versions use similar connection strings:
+All versions use MAVSDK connection strings:
 
 ```python
 # SITL / UDP
 "udp://:14540"
 "udp://127.0.0.1:14540"
+"udpin://127.0.0.1:14550"
 
 # Serial
 "serial:///dev/ttyUSB0:57600"
@@ -58,6 +50,7 @@ All versions use similar connection strings:
 
 | Type           | Description                              | Available In |
 |----------------|------------------------------------------|--------------|
-| `Drone`        | Multicopter (takeoff, land, 3D movement) | All versions |
-| `Rover`        | Ground vehicle (2D movement)             | All versions |
-| `DummyVehicle` | For scripts without vehicles             | All versions |
+| `Drone`        | Multicopter (takeoff, land, 3D movement) | v1, v2       |
+| `Rover`        | Ground vehicle (2D movement)             | v1, v2       |
+| `DummyVehicle` | No-op for scripts without vehicles       | v1           |
+| `MockDrone`    | Test double for unit tests               | v2           |

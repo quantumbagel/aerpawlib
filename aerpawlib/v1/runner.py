@@ -34,6 +34,11 @@ from .exceptions import (
     StateMachineError,
 )
 
+import traceback
+
+from aerpawlib.log import get_logger, LogComponent
+
+logger = get_logger(LogComponent.RUNNER)
 
 class Runner:
     """

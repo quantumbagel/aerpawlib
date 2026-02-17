@@ -193,7 +193,7 @@ class HideRover(StateMachine):
             return
         self._dump_to_csv(vehicle, self._cur_line, self._csv_writer)
         self._log_file.flush()
-        os.fsync(self._log_file)
+        os.fsync(self._log_file.fileno())
         self._cur_line += 1
 
     def cleanup(self):

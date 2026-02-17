@@ -12,7 +12,7 @@ import asyncio
 
 from grpc.aio import AioRpcError
 
-from aerpawlib.v1.log import get_logger, LogComponent
+from aerpawlib.log import get_logger, LogComponent
 import math
 import time
 import threading
@@ -31,6 +31,7 @@ from aerpawlib.v1.constants import (
     CONNECTION_TIMEOUT_S,
     ARMABLE_TIMEOUT_S,
     ARMABLE_STATUS_LOG_INTERVAL_S,
+    POSITION_READY_TIMEOUT_S,
     DEFAULT_POSITION_TOLERANCE_M,
     VERBOSE_LOG_FILE_PREFIX,
     VERBOSE_LOG_DELAY_S,
@@ -473,7 +474,7 @@ class Vehicle:
 
         async def _health_update():
             async for health in self._system.telemetry.health():
-                # print(health)
+                print(health)
                 self._is_armable_state.set(
                     health.is_global_position_ok
                     and health.is_home_position_ok
@@ -732,7 +733,7 @@ class Vehicle:
         for future in list(self._pending_mavsdk_futures):
             try:
                 future.cancel()
-            except:
+            except Exception:
                 pass
 
         # Cancel telemetry tasks on their own event loop (thread-safe)
@@ -876,6 +877,22 @@ class Vehicle:
                 logger.error(str(e))
                 raise NotArmableError(str(e))
 
+            # Wait for GPS 3D fix explicitly. MAVSDK's is_global_position_ok can report
+            # true before the autopilot has valid position for GUIDED mode (e.g. when
+            # SITL is still starting up). Without this, takeoff fails with
+            # "Mode change to GUIDED failed: requires position".
+            logger.debug("Waiting for GPS 3D fix (position ready for GUIDED)...")
+            try:
+                await wait_for_condition(
+                    lambda: self.gps.fix_type >= 3,
+                    timeout=POSITION_READY_TIMEOUT_S,
+                    poll_interval=POLLING_DELAY_S,
+                    timeout_message=f"No GPS 3D fix after {POSITION_READY_TIMEOUT_S}s - ensure SITL/hardware is fully started",
+                )
+            except TimeoutError as e:
+                logger.error(str(e))
+                raise NotArmableError(str(e))
+
             logger.debug("Vehicle is armable, sending arm command...")
 
             # Arm the vehicle
@@ -883,6 +900,7 @@ class Vehicle:
             logger.info("Vehicle armed successfully")
 
         await asyncio.sleep(ARMING_SEQUENCE_DELAY_S)
+
 
         self._abortable = True
 

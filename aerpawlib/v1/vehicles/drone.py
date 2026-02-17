@@ -3,7 +3,7 @@ Drone vehicle implementation.
 """
 
 import asyncio
-from aerpawlib.v1.log import get_logger, LogComponent
+from aerpawlib.log import get_logger, LogComponent
 import math
 import time
 from typing import Optional
@@ -20,6 +20,7 @@ from aerpawlib.v1.constants import (
     VELOCITY_UPDATE_DELAY_S,
     DEFAULT_POSITION_TOLERANCE_M,
     MIN_ARM_TO_TAKEOFF_DELAY_S,
+    DEFAULT_GOTO_TIMEOUT_S,
 )
 from aerpawlib.v1.exceptions import (
     TakeoffError,
@@ -241,7 +242,7 @@ class Drone(Vehicle):
         coordinates: util.Coordinate,
         tolerance: float = DEFAULT_POSITION_TOLERANCE_M,
         target_heading: Optional[float] = None,
-        timeout: float = 300.0,
+        timeout: float = DEFAULT_GOTO_TIMEOUT_S,
     ) -> None:
         """
         Make the vehicle go to provided coordinates.

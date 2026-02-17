@@ -15,6 +15,10 @@ CONNECTION_TIMEOUT_S = 30.0
 # Maximum time to wait for vehicle to become armable (seconds)
 ARMABLE_TIMEOUT_S = 60.0
 
+# Maximum time to wait for GPS/position ready (seconds)
+# SITL can report armable before autopilot has valid position for GUIDED mode
+POSITION_READY_TIMEOUT_S = 60.0
+
 # Interval for checking connection state (seconds)
 POLLING_DELAY_S = 0.01
 
@@ -62,6 +66,10 @@ DEFAULT_TAKEOFF_ALTITUDE_TOLERANCE = 0.95
 # Default tolerance for rover position checks (meters)
 # Slightly larger than drone default due to rover GPS accuracy
 DEFAULT_ROVER_POSITION_TOLERANCE_M = 2.1
+
+# Default timeout for goto / navigation commands (seconds)
+# Used by both drones and rovers when waiting to reach a target coordinate
+DEFAULT_GOTO_TIMEOUT_S = 300.0
 
 
 # Timing Constants
