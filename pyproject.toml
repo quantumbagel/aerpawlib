@@ -1,11 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "aerpawlib"
-version = "1.0.0beta.8"
+version = "1.0.0-beta-3"
 description = "Tools and frameworks for writing AERPAW scripts"
 readme = "README.md"
+license = {text = "MIT"}
 authors = [
     {name = "John Kesler", email = "jckesle2@ncsu.edu"},
-    {name = "Julian Reder", email = "jjreder@ncsu.edu"}
+    {name = "Julian Reder", email = "jjreder@ncsu.edu"},
 ]
 requires-python = ">=3.9"
 classifiers = [
@@ -19,6 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -36,8 +42,7 @@ dependencies = [
     "pymavlink>=2.4.0",
     "pyserial>=3.5",
     "requests>=2.32.4",
-    "pyyaml"
-
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +52,7 @@ dev = [
     "psutil>=5.9.0",
 ]
 all = [
-    "aerpawlib[v2,dev,docs]",
+    "aerpawlib[dev]",
 ]
 
 [project.urls]
@@ -63,11 +68,11 @@ aerpawlib = "aerpawlib.__main__:main"
 include = ["aerpawlib*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml", "*.kml", "*.plan"]
+aerpawlib = ["*.yaml", "*.kml", "*.plan"]
 
 [tool.black]
 line-length = 79
-target-version = ["py39", "py310", "py311", "py312"]
+target-version = ["py39", "py310", "py311", "py312", "py313"]
 include = '\.pyi?$'
 exclude = '''
 /(
