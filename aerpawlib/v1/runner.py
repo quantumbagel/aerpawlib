@@ -116,7 +116,7 @@ class BasicRunner(Runner):
 
     async def run(self, vehicle: Vehicle):
         self._build()
-        if hasattr(self, "_entry"):
+        if self._entry is not None:
             await self._entry.__func__(self, vehicle)
         else:
             raise NoEntrypointError()
@@ -222,7 +222,12 @@ def timed_state(name: str, duration: float, loop=False, first: bool = False):
 
     Returns:
         Callable: The decorated function.
+
+    Raises:
+        InvalidStateNameError: If the name is empty.
     """
+    if name == "":
+        raise InvalidStateNameError()
 
     def decorator(func):
         func._is_state = True

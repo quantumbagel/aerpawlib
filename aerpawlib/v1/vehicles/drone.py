@@ -33,7 +33,6 @@ from aerpawlib.v1.exceptions import (
 from aerpawlib.v1.helpers import (
     wait_for_condition,
     validate_tolerance,
-    validate_altitude,
     normalize_heading,
     heading_difference,
 )
@@ -170,7 +169,6 @@ class Drone(Vehicle):
         Raises:
             TakeoffError: If the takeoff command fails or is rejected by the autopilot.
         """
-        validate_altitude(target_alt, "target_alt")
         await self.await_ready_to_move()
 
         # Enforce minimum delay between arming and takeoff

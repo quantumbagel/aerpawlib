@@ -46,7 +46,6 @@ from aerpawlib.v1.exceptions import (
 )
 from aerpawlib.v1.helpers import (
     wait_for_condition,
-    validate_speed,
     ThreadSafeValue,
 )
 
@@ -959,7 +958,9 @@ class Vehicle:
         Raises:
             ValueError: If velocity is out of acceptable range
         """
-        validate_speed(velocity, "velocity")
+        # Note: speed bounds (min_speed / max_speed) are enforced by the
+        # SafetyCheckerServer via validate_change_speed_command. No redundant
+        # constant-based check here.
         logger.debug(f"set_groundspeed({velocity}) called")
         try:
             await self._run_on_mavsdk_loop(

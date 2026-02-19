@@ -90,6 +90,12 @@ def validate_tolerance(
     """
     Validate a tolerance value is within acceptable bounds.
 
+    This is a client-side sanity check for navigation tolerances (e.g. how
+    close the vehicle must get to a waypoint before considering it reached).
+    It is *not* related to mission safety constraints — altitude and speed
+    limits are the responsibility of the SafetyCheckerServer, which enforces
+    mission-specific bounds loaded from the vehicle YAML config.
+
     Args:
         tolerance: The tolerance value to validate
         param_name: Name of parameter for error message
@@ -112,59 +118,6 @@ def validate_tolerance(
         )
     return tolerance
 
-
-def validate_altitude(altitude: float, param_name: str = "altitude") -> float:
-    """
-    Validate an altitude value is within acceptable bounds.
-
-    Args:
-        altitude: The altitude value to validate (meters AGL)
-        param_name: Name of parameter for error message
-
-    Returns:
-        The validated altitude value
-
-    Raises:
-        ValueError: If altitude is out of acceptable range
-    """
-    from .constants import MIN_FLIGHT_ALTITUDE_M, MAX_ALTITUDE_M
-
-    if altitude < MIN_FLIGHT_ALTITUDE_M:
-        raise ValueError(
-            f"{param_name} must be at least {MIN_FLIGHT_ALTITUDE_M}m, got {altitude}m"
-        )
-    if altitude > MAX_ALTITUDE_M:
-        raise ValueError(
-            f"{param_name} must be at most {MAX_ALTITUDE_M}m, got {altitude}m"
-        )
-    return altitude
-
-
-def validate_speed(speed: float, param_name: str = "speed") -> float:
-    """
-    Validate a speed value is within acceptable bounds.
-
-    Args:
-        speed: The speed value to validate (m/s)
-        param_name: Name of parameter for error message
-
-    Returns:
-        The validated speed value
-
-    Raises:
-        ValueError: If speed is out of acceptable range
-    """
-    from .constants import MIN_GROUNDSPEED_M_S, MAX_GROUNDSPEED_M_S
-
-    if speed < MIN_GROUNDSPEED_M_S:
-        raise ValueError(
-            f"{param_name} must be at least {MIN_GROUNDSPEED_M_S} m/s, got {speed} m/s"
-        )
-    if speed > MAX_GROUNDSPEED_M_S:
-        raise ValueError(
-            f"{param_name} must be at most {MAX_GROUNDSPEED_M_S} m/s, got {speed} m/s"
-        )
-    return speed
 
 
 def normalize_heading(heading: float) -> float:

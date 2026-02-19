@@ -28,6 +28,10 @@ logger = get_logger(LogComponent.SITL)
 DEFAULT_SITL_PORT = 14550
 DEFAULT_SITL_PORT_DRONE = 14550
 DEFAULT_SITL_PORT_ROVER = 14560
+# SITL instance IDs - each instance uses different internal TCP ports (5760 + instance*10)
+# This allows running drone and rover concurrently without port conflicts
+DEFAULT_SITL_INSTANCE_DRONE = 0  # Uses TCP 5760-5769
+DEFAULT_SITL_INSTANCE_ROVER = 1  # Uses TCP 5770-5779
 SITL_STARTUP_TIMEOUT = 90
 SITL_GPS_TIMEOUT = 120
 LAKE_WHEELER_LAT = 35.727436
@@ -85,7 +89,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--sitl-port-rover",
         action="store",
         default=None,
-        help=f"UDP port for ArduRover SITL (default: {DEFAULT_SITL_PORT_ROVER})",
+        help=f"UDP port for Rover SITL (default: {DEFAULT_SITL_PORT_ROVER})",
     )
     parser.addoption(
         "--no-sitl",
@@ -93,10 +97,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip SITL-managed integration tests (SITL must be running externally)",
     )
     parser.addoption(
-        "--sitl-manage",
-        action="store_true",
+        "--no-sitl-manage",
+        action="store_false",
+        dest="sitl_manage",
         default=True,
-        help="Pytest starts/stops SITL for integration tests (default: True)",
+        help="Pytest does not start/stop SITL; use external SITL (default: pytest manages SITL)",
     )
 
 
@@ -149,13 +154,20 @@ def zero_vector():
 class SITLManager:
     """
     Manages ArduPilot SITL process for integration tests.
-    Starts SITL, provides connection string, performs full reset between tests.
+    Starts SITL with MAVProxy, provides connection string, performs full reset between tests.
     """
 
-    def __init__(self, port: int, vehicle_type: str = "ArduCopter", manage: bool = True):
+    def __init__(
+        self,
+        port: int,
+        vehicle_type: str = "ArduCopter",
+        manage: bool = True,
+        instance_id: int = 0,
+    ):
         self.port = port
         self.vehicle_type = vehicle_type
         self.manage = manage
+        self.instance_id = instance_id
         self._process: Optional[subprocess.Popen] = None
         self._sim_vehicle_path: Optional[Path] = None
 
@@ -177,23 +189,27 @@ class SITLManager:
         env = os.environ.copy()
         env["ARDUPILOT_HOME"] = str(ardupilot_home)
         env.setdefault("SIM_SPEEDUP", "5")
+        # Prevent sim_vehicle's run_in_terminal_window.sh from opening a new Terminal window in GUI environments
+        env.pop("DISPLAY", None)
 
         cmd = [
             sys.executable,
             str(sim_vehicle),
             "-v", self.vehicle_type,
+            "-I", str(self.instance_id),
             "--out", f"udp:127.0.0.1:{self.port}",
-            "--no-mavproxy",
             "-w",
         ]
 
         logger.info(f"Starting SITL with command: {' '.join(cmd)}")
         logger.info(f"SITL Working Directory: {ardupilot_home}")
 
-        # Capture SITL output to a log file for debugging
-        sitl_log_path = Path("logs/sitl_output.log")
+        # Capture SITL output to a per-vehicle log file for debugging
+        log_suffix = "drone" if self.vehicle_type == "ArduCopter" else "rover"
+        sitl_log_path = Path(f"logs/sitl_{log_suffix}_output.log")
         sitl_log_path.parent.mkdir(exist_ok=True)
         self._sitl_log = open(sitl_log_path, "w")
+        logger.info(f"SITL output log: {sitl_log_path}")
 
         self._process = subprocess.Popen(
             cmd,
@@ -218,14 +234,23 @@ class SITLManager:
                 self._sitl_log.close()
                 with open(sitl_log_path, "r") as f:
                     output = f.read()
-                msg = f"SITL process exited prematurely with code {self._process.returncode}. Output:\n{output}"
+                sitl_process_log = f"/tmp/{self.vehicle_type}.log"
+                msg = (
+                    f"SITL process exited prematurely with code {self._process.returncode}. "
+                    f"sim_vehicle output:\n{output}\n"
+                    f"Also check {sitl_process_log} for SITL binary output."
+                )
                 logger.error(msg)
                 pytest.fail(msg)
 
             time.sleep(1)
 
         self.stop()
-        msg = f"SITL failed to start within {SITL_STARTUP_TIMEOUT}s. Check {sitl_log_path} for details."
+        sitl_process_log = f"/tmp/{self.vehicle_type}.log"
+        msg = (
+            f"SITL failed to start within {SITL_STARTUP_TIMEOUT}s. "
+            f"Check {sitl_log_path} (sim_vehicle output) and {sitl_process_log} (SITL process)."
+        )
         logger.error(msg)
         pytest.fail(msg)
 
@@ -271,9 +296,14 @@ def sitl_manager_drone(request: pytest.FixtureRequest) -> SITLManager:
     """Session-scoped ArduCopter SITL manager for drone tests."""
     port = _get_sitl_port_drone(request.config)
     no_sitl = request.config.getoption("--no-sitl", default=False)
-    manage = request.config.getoption("--sitl-manage", default=True) and not no_sitl
+    manage = request.config.getoption("sitl_manage", default=True) and not no_sitl
 
-    manager = SITLManager(port=port, vehicle_type="ArduCopter", manage=manage)
+    manager = SITLManager(
+        port=port,
+        vehicle_type="ArduCopter",
+        manage=manage,
+        instance_id=DEFAULT_SITL_INSTANCE_DRONE,
+    )
     if manage:
         manager.start()
         request.addfinalizer(manager.stop)
@@ -282,12 +312,17 @@ def sitl_manager_drone(request: pytest.FixtureRequest) -> SITLManager:
 
 @pytest.fixture(scope="session")
 def sitl_manager_rover(request: pytest.FixtureRequest) -> SITLManager:
-    """Session-scoped ArduRover SITL manager for rover tests."""
+    """Session-scoped Rover SITL manager for rover tests."""
     port = _get_sitl_port_rover(request.config)
     no_sitl = request.config.getoption("--no-sitl", default=False)
-    manage = request.config.getoption("--sitl-manage", default=True) and not no_sitl
+    manage = request.config.getoption("sitl_manage", default=True) and not no_sitl
 
-    manager = SITLManager(port=port, vehicle_type="ArduRover", manage=manage)
+    manager = SITLManager(
+        port=port,
+        vehicle_type="Rover",
+        manage=manage,
+        instance_id=DEFAULT_SITL_INSTANCE_ROVER,
+    )
     if manage:
         manager.start()
         request.addfinalizer(manager.stop)

@@ -114,17 +114,6 @@ MIN_POSITION_TOLERANCE_M = 0.1
 # Maximum acceptable position tolerance (meters)
 MAX_POSITION_TOLERANCE_M = 100.0
 
-# Maximum reasonable altitude (meters AGL)
-MAX_ALTITUDE_M = 400.0
-
-# Minimum reasonable altitude for flight (meters AGL)
-MIN_FLIGHT_ALTITUDE_M = 1.0
-
-# Maximum reasonable ground speed (m/s)
-MAX_GROUNDSPEED_M_S = 30.0
-
-# Minimum ground speed (m/s)
-MIN_GROUNDSPEED_M_S = 0.0
 
 
 # AERPAW Platform Constants
