@@ -25,6 +25,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -50,6 +51,13 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "psutil>=5.9.0",
+    "aerpawlib[sitl]",
+]
+sitl = [
+    "msgspec>=0.18.0",
+    "empy<4.0.0",
+    "pexpect>=4.8.0",
+    "MAVProxy>=1.8.0",
 ]
 all = [
     "aerpawlib[dev]",
@@ -63,16 +71,17 @@ Documentation = "https://github.com/quantumbagel/aerpawlib#readme"
 
 [project.scripts]
 aerpawlib = "aerpawlib.__main__:main"
+aerpawlib-setup-sitl = "scripts.setup_sitl:main"
 
 [tool.setuptools.packages.find]
-include = ["aerpawlib*"]
+include = ["aerpawlib*", "scripts*"]
 
 [tool.setuptools.package-data]
 aerpawlib = ["*.yaml", "*.kml", "*.plan"]
 
 [tool.black]
 line-length = 79
-target-version = ["py39", "py310", "py311", "py312", "py313"]
+target-version = ["py39", "py310", "py311", "py312", "py313", "py314"]
 include = '\.pyi?$'
 exclude = '''
 /(

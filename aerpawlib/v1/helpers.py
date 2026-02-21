@@ -9,7 +9,8 @@ Common patterns extracted to reduce code duplication and improve maintainability
 import asyncio
 from typing import Callable, Optional, TypeVar, Any
 
-from .constants import POLLING_DELAY_S
+from .constants import POLLING_DELAY_S, MIN_POSITION_TOLERANCE_M, MAX_POSITION_TOLERANCE_M
+
 
 
 T = TypeVar("T")
@@ -106,7 +107,6 @@ def validate_tolerance(
     Raises:
         ValueError: If tolerance is out of acceptable range
     """
-    from .constants import MIN_POSITION_TOLERANCE_M, MAX_POSITION_TOLERANCE_M
 
     if tolerance < MIN_POSITION_TOLERANCE_M:
         raise ValueError(

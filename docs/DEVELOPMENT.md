@@ -90,7 +90,8 @@ pytest tests/integration/ -v --no-sitl
 ```
 
 **Prerequisites**:
-- `ARDUPILOT_HOME` set, or run `./install_ardupilot.sh`
+- `pip install -e .[dev]` then `aerpawlib-setup-sitl` (or `./scripts/install_dev.sh`)
+- `ARDUPILOT_HOME` set to `./ardupilot` (default) or the ArduPilot path
 - `sim_vehicle.py` at `$ARDUPILOT_HOME/Tools/autotest/sim_vehicle.py`
 
 See [tests/README.md](../tests/README.md) for full details.

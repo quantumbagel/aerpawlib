@@ -254,7 +254,7 @@ class Vehicle:
         self._was_already_armed_on_connect = False
         self._last_heartbeat_time = 0.0
 
-        # Internal state tracking (use ThreadSafeValue for thread-safe access)
+        # Safety checker setup
         self._armed_state = ThreadSafeValue(False)
         self._is_armable_state = ThreadSafeValue(False)
         self._last_arm_time = ThreadSafeValue(0.0)

@@ -10,10 +10,9 @@ Planned features and improvements for future releases.
   - [x] Development guide for contributors
   - [ ] Additional examples and tutorials
 - [ ] **Testing**
-  - [ ] More integration tests for v1 API
-  - [ ] Fix integrated SITL testing (currently broken)
+  - [x] Fix integrated SITL testing (currently broken)
   - [ ] Get all tests passing (currently some skipped/failing)
-  - [ ] Installing aerpawlib[dev] installs ardupilot SITL into the code
+  - [ ] Installing aerpawlib[dev] installs ardupilot SITL into the code (note that this is the special aerpaw sitl)
   - [ ] ZMQ tests
   - [ ] Get SITL from C-VM docker and use it for testing instead of ardupilot SITL
 - [ ] **Features**

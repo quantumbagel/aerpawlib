@@ -19,6 +19,22 @@ A Python library for controlling vehicles within the [AERPAW](https://aerpaw.org
 pip install -e .
 ```
 
+### Development (with ArduPilot SITL)
+
+For running integration tests and local SITL simulation:
+
+```bash
+pip install -e .[dev]
+aerpawlib-setup-sitl
+```
+
+Or use the one-liner script:
+
+```bash
+./scripts/install_dev.sh
+```
+This installs dev dependencies (pytest, etc.), ArduPilot SITL, MAVProxy, and compiles Copter + Rover SITL.
+
 ## Quick Start
 
 ```python
