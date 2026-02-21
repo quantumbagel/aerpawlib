@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aerpawlib"
-version = "1.0.0-beta-3"
+version = "1.0.0-beta-4"
 description = "Tools and frameworks for writing AERPAW scripts"
 readme = "README.md"
 license = {text = "MIT"}
