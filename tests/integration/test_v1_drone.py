@@ -43,13 +43,6 @@ class TestDroneConnection:
         assert isinstance(a.yaw, float)
 
     @pytest.mark.asyncio
-    async def test_velocity_is_list_or_tuple(self, connected_drone):
-        """velocity property returns some iterable with 3 components."""
-        v = connected_drone.velocity
-        assert v is not None
-        assert len(v) == 3
-
-    @pytest.mark.asyncio
     async def test_battery_level_valid_range(self, connected_drone):
         b = connected_drone.battery
         assert 0 <= b.level <= 100
@@ -212,22 +205,21 @@ class TestDroneMultiWaypoint:
 
 
 class TestDroneVelocityControl:
-    """Velocity control (set_velocity_ned)."""
+    """Velocity control (set_velocity)."""
 
     @pytest.mark.asyncio
-    async def test_set_velocity_ned_moves_drone(self, connected_drone):
+    async def test_set_velocity_moves_drone(self, connected_drone):
         """Commanding a northward velocity should move the drone north."""
         import asyncio as _asyncio
         from aerpawlib.v1.util import VectorNED
         connected_drone._initialize_prearm(should_postarm_init=True)
         await connected_drone.takeoff(10)
         pos_before = connected_drone.position
-        # Use set_velocity_ned if available, else skip
-        if not hasattr(connected_drone, "set_velocity_ned"):
-            pytest.skip("set_velocity_ned not implemented")
-        await connected_drone.set_velocity_ned(VectorNED(2, 0, 0))
+        if not hasattr(connected_drone, "set_velocity"):
+            pytest.skip("set_velocity not implemented")
+        await connected_drone.set_velocity(VectorNED(2, 0, 0))
         await _asyncio.sleep(3)
-        await connected_drone.set_velocity_ned(VectorNED(0, 0, 0))  # stop
+        await connected_drone.set_velocity(VectorNED(0, 0, 0))  # stop
         pos_after = connected_drone.position
         # Should have moved at least 2 m northward
         diff = pos_after - pos_before

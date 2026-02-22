@@ -230,17 +230,21 @@ class Vehicle:
     # Connection/heartbeat tracking
     _last_heartbeat_time: float = 0.0
 
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, mavsdk_server_port: int = 50051):
         """
         Initialize the vehicle and connect to the autopilot.
 
         Args:
             connection_string (str): MAVLink connection string (e.g., 'udp://:14540').
+            mavsdk_server_port (int): Port for the embedded mavsdk_server gRPC interface.
+                Each Vehicle instance should use a unique port to avoid conflicts.
+                Defaults to 50051.
 
         Raises:
             ConnectionTimeoutError: If connection cannot be established within timeout.
         """
         self._connection_string = connection_string
+        self._mavsdk_server_port = mavsdk_server_port
         self._system = None
         self._has_heartbeat = False
         self._verbose_log_lock = threading.Lock()
@@ -379,7 +383,7 @@ class Vehicle:
         """
         Asynchronously connect to the MAVSDK system and start telemetry tasks.
         """
-        self._system = System()
+        self._system = System(port=self._mavsdk_server_port)
         await self._system.connect(system_address=self._connection_string)
 
         # Wait for connection
@@ -734,11 +738,17 @@ class Vehicle:
         # Cancel telemetry tasks on their own event loop (thread-safe)
         if self._mavsdk_loop is not None and self._mavsdk_loop.is_running():
             for task in self._telemetry_tasks:
-                self._mavsdk_loop.call_soon_threadsafe(task.cancel)
+                try:
+                    self._mavsdk_loop.call_soon_threadsafe(task.cancel)
+                except RuntimeError:
+                    pass
 
-        # Stop MAVSDK loop
-        if self._mavsdk_loop is not None:
-            self._mavsdk_loop.call_soon_threadsafe(self._mavsdk_loop.stop)
+        # Stop MAVSDK loop (only if it's still running)
+        if self._mavsdk_loop is not None and self._mavsdk_loop.is_running():
+            try:
+                self._mavsdk_loop.call_soon_threadsafe(self._mavsdk_loop.stop)
+            except RuntimeError:
+                pass
 
         # Close verbose log writer under the same lock the update loop uses
         with self._verbose_log_lock:
@@ -747,7 +757,11 @@ class Vehicle:
                 self._verbose_logging_file_writer = None
 
         if hasattr(self, "_mavsdk_thread") and self._mavsdk_thread.is_alive():
-            self._mavsdk_thread.join(timeout=2.0)
+            self._mavsdk_thread.join(timeout=5.0)
+
+        # Clear system reference to help garbage collection release the gRPC server
+        self._system = None
+        self._mavsdk_loop = None
 
         logger.info("Vehicle connection closed")
 

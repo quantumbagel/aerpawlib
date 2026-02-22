@@ -13,7 +13,7 @@ import os
 CONNECTION_TIMEOUT_S = 30.0
 
 # Maximum time to wait for vehicle to become armable (seconds)
-ARMABLE_TIMEOUT_S = 600.0
+ARMABLE_TIMEOUT_S = 60.0
 
 # Maximum time to wait for GPS/position ready (seconds)
 # SITL can report armable before autopilot has valid position for GUIDED mode

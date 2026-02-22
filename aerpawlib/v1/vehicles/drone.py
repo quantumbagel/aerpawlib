@@ -54,17 +54,20 @@ class Drone(Vehicle):
 
     _velocity_loop_active: bool = False
 
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, mavsdk_server_port: int = 50051):
         """
         Initialize the drone and check for startup constraints.
 
         Args:
             connection_string (str): MAVLink connection string.
+            mavsdk_server_port (int): Port for the embedded mavsdk_server gRPC interface.
+                Each Vehicle instance should use a unique port to avoid conflicts.
+                Defaults to 50051.
 
         Raises:
             NotArmableError: If the vehicle is already armed (safety check).
         """
-        super().__init__(connection_string)
+        super().__init__(connection_string, mavsdk_server_port=mavsdk_server_port)
         # Wait for armed-state telemetry to arrive before checking
         start = time.time()
         while not self._armed_telemetry_received.get():

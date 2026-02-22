@@ -96,21 +96,6 @@ def setup_sitl(skip_compile: bool = False) -> bool:
     ):
         return False
 
-    print("Compiling SITL (copter)...")
-    if not _run(
-        ["./waf", "copter"],
-        cwd=workarea,
-        env=env,
-    ):
-        return False
-    print("Compiling SITL (rover)...")
-    if not _run(
-        ["./waf", "rover"],
-        cwd=workarea,
-        env=env,
-    ):
-        return False
-
     print("SITL setup complete.")
     print(f"  ARDUPILOT_HOME={workarea}")
     print(f"  sim_vehicle.py at {autotest / 'sim_vehicle.py'}")

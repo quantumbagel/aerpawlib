@@ -32,6 +32,9 @@ DEFAULT_SITL_PORT_ROVER = 14560
 # This allows running drone and rover concurrently without port conflicts
 DEFAULT_SITL_INSTANCE_DRONE = 0  # Uses TCP 5760-5769
 DEFAULT_SITL_INSTANCE_ROVER = 1  # Uses TCP 5770-5779
+# MAVSDK server ports - each vehicle needs its own gRPC port to avoid conflicts
+DEFAULT_MAVSDK_SERVER_PORT_DRONE = 50051
+DEFAULT_MAVSDK_SERVER_PORT_ROVER = 50052
 SITL_STARTUP_TIMEOUT = 90
 SITL_GPS_TIMEOUT = 120
 LAKE_WHEELER_LAT = 35.727436
@@ -398,12 +401,27 @@ async def _full_sitl_reset(vehicle) -> None:
         pass
 
 
-async def _connect_and_wait_gps(vehicle_class, connection_string: str, timeout: int = SITL_GPS_TIMEOUT):
-    """Connect vehicle and wait for 3D GPS fix."""
+async def _connect_and_wait_gps(
+    vehicle_class,
+    connection_string: str,
+    mavsdk_server_port: int = 50051,
+    timeout: int = SITL_GPS_TIMEOUT,
+):
+    """Connect vehicle and wait for 3D GPS fix.
+
+    Args:
+        vehicle_class: The vehicle class to instantiate (Drone or Rover).
+        connection_string: MAVLink connection string.
+        mavsdk_server_port: Port for the embedded mavsdk_server gRPC interface.
+            Each vehicle instance should use a unique port to avoid conflicts.
+        timeout: Timeout for GPS fix in seconds.
+    """
     from aerpawlib.v1.exceptions import ConnectionTimeoutError
 
     try:
-        vehicle = await asyncio.to_thread(vehicle_class, connection_string)
+        vehicle = await asyncio.to_thread(
+            vehicle_class, connection_string, mavsdk_server_port=mavsdk_server_port
+        )
     except ConnectionTimeoutError:
         pytest.fail(f"Connection timeout to {connection_string}")
     except Exception as e:
@@ -430,7 +448,11 @@ async def connected_drone(sitl_connection_string_drone: str) -> AsyncGenerator:
     """Drone connected to SITL. Full reset before each test."""
     from aerpawlib.v1.vehicle import Drone
 
-    drone = await _connect_and_wait_gps(Drone, sitl_connection_string_drone)
+    drone = await _connect_and_wait_gps(
+        Drone,
+        sitl_connection_string_drone,
+        mavsdk_server_port=DEFAULT_MAVSDK_SERVER_PORT_DRONE,
+    )
     yield drone
     try:
         await _full_sitl_reset(drone)
@@ -443,7 +465,11 @@ async def connected_rover(sitl_connection_string_rover: str) -> AsyncGenerator:
     """Rover connected to SITL. Full reset before each test."""
     from aerpawlib.v1.vehicle import Rover
 
-    rover = await _connect_and_wait_gps(Rover, sitl_connection_string_rover)
+    rover = await _connect_and_wait_gps(
+        Rover,
+        sitl_connection_string_rover,
+        mavsdk_server_port=DEFAULT_MAVSDK_SERVER_PORT_ROVER,
+    )
     yield rover
     try:
         await _full_sitl_reset(rover)

@@ -42,6 +42,18 @@ class Rover(Vehicle):
         MAVLink mission item for navigation usually handles steering.
     """
 
+    def __init__(self, connection_string: str, mavsdk_server_port: int = 50051):
+        """
+        Initialize the rover.
+
+        Args:
+            connection_string (str): MAVLink connection string.
+            mavsdk_server_port (int): Port for the embedded mavsdk_server gRPC interface.
+                Each Vehicle instance should use a unique port to avoid conflicts.
+                Defaults to 50051.
+        """
+        super().__init__(connection_string, mavsdk_server_port=mavsdk_server_port)
+
     async def goto_coordinates(
         self,
         coordinates: util.Coordinate,
