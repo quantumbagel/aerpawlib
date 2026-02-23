@@ -9,6 +9,10 @@ backward compatibility with the original DroneKit-based interface.
 """
 
 import asyncio
+import errno
+import re
+import socket
+from urllib.parse import urlparse
 
 from grpc.aio import AioRpcError
 
@@ -16,7 +20,7 @@ from aerpawlib.log import get_logger, LogComponent
 import math
 import time
 import threading
-from typing import Callable, Optional, List
+from typing import Callable, List, Optional, Tuple
 
 from mavsdk import System
 from mavsdk.action import ActionError
@@ -25,14 +29,15 @@ from mavsdk.action import ActionError
 from aerpawlib.v1 import util
 from aerpawlib.v1.aerpaw import AERPAW_Platform
 from aerpawlib.v1.constants import (
-    POLLING_DELAY_S,
     ARMING_SEQUENCE_DELAY_S,
+    POLLING_DELAY_S,
     INTERNAL_UPDATE_DELAY_S,
     CONNECTION_TIMEOUT_S,
     ARMABLE_TIMEOUT_S,
     ARMABLE_STATUS_LOG_INTERVAL_S,
     POSITION_READY_TIMEOUT_S,
     DEFAULT_POSITION_TOLERANCE_M,
+    DEFAULT_GOTO_TIMEOUT_S,
     VERBOSE_LOG_FILE_PREFIX,
     VERBOSE_LOG_DELAY_S,
 )
@@ -43,6 +48,7 @@ from aerpawlib.v1.exceptions import (
     NotArmableError,
     NotImplementedForVehicleError,
     AerpawConnectionError,
+    PortInUseError,
 )
 from aerpawlib.v1.helpers import (
     wait_for_condition,
@@ -51,6 +57,79 @@ from aerpawlib.v1.helpers import (
 
 # Configure module logger
 logger = get_logger(LogComponent.VEHICLE)
+
+
+def _parse_udp_connection_port(connection_string: str) -> Optional[Tuple[str, int]]:
+    """
+    Parse host and port from a UDP connection string for port-in-use checks.
+
+    Supports MAVSDK/aerpawlib UDP formats:
+    - udp://:port, udp://host:port
+    - udpin://:port, udpin://host:port, udpin://[ipv6]:port
+    - udpout:// returns None (client mode; no local bind)
+
+    Returns:
+        (host, port) for server/listen modes, None for client mode or non-UDP.
+    """
+    parsed = urlparse(connection_string.strip())
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc
+
+    # udpout is client mode - we connect to remote, no local bind to check
+    if scheme == "udpout":
+        return None
+
+    if scheme not in ("udp", "udpin"):
+        return None
+
+    if not netloc:
+        return None
+
+    # Parse host and port from netloc
+    # IPv6: [::1]:14540 or [fe80::1]:14540
+    ipv6_match = re.match(r"\[([^\]]+)\]:(\d+)$", netloc)
+    if ipv6_match:
+        host, port_str = ipv6_match.group(1), ipv6_match.group(2)
+    else:
+        # IPv4 or hostname: 127.0.0.1:14550 or :14540
+        parts = netloc.rsplit(":", 1)
+        if len(parts) != 2:
+            return None
+        host, port_str = parts
+
+    try:
+        port = int(port_str)
+    except ValueError:
+        return None
+
+    if not (0 < port <= 65535):
+        return None
+
+    host = host.strip() if host else "0.0.0.0"
+    return (host, port)
+
+
+def is_udp_port_in_use(host: str, port: int) -> bool:
+    """
+    Check if a local UDP port is in use by trying to bind to it.
+
+    Args:
+        host: The local IP address to bind to (e.g., '127.0.0.1', '0.0.0.0', or '::1').
+        port: The port number to check.
+
+    Returns:
+        True if the port is in use, False otherwise.
+    """
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_DGRAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except OSError as e:
+            if e.errno == errno.EADDRINUSE:
+                return True
+            logger.warning("Port check failed: %s", e)
+            return True
 
 
 class _BatteryCompat:
@@ -179,7 +258,7 @@ class Vehicle:
     excluding specific movement commands. This class maintains an internal
     MAVSDK session while providing a DroneKit-compatible API.
 
-    Safety Initialization Patterns:
+    Safety tenets:
     - Never auto-arms by default; waits for external actor (safety pilot/GCS).
     - Detects armed state and transitions to GUIDED mode.
     - Captures home location upon entering GUIDED mode.
@@ -247,6 +326,8 @@ class Vehicle:
         self._mavsdk_server_port = mavsdk_server_port
         self._system = None
         self._has_heartbeat = False
+        self._connection_error: Optional[BaseException] = None
+        self._closed = False
         self._verbose_log_lock = threading.Lock()
         self._should_postarm_init = True
         self._mission_start_time: Optional[float] = None
@@ -261,6 +342,7 @@ class Vehicle:
         # Safety checker setup
         self._armed_state = ThreadSafeValue(False)
         self._is_armable_state = ThreadSafeValue(False)
+        self._health_val = ThreadSafeValue(None)
         self._last_arm_time = ThreadSafeValue(0.0)
         self._position_lat = ThreadSafeValue(0.0)
         self._position_lon = ThreadSafeValue(0.0)
@@ -300,6 +382,17 @@ class Vehicle:
 
         This is a synchronous wrapper around asynchronous connection logic.
         """
+        # Fail fast if UDP port from connection string is already in use (avoids hanging)
+        parsed = _parse_udp_connection_port(self._connection_string)
+        if parsed is not None:
+            host, port = parsed
+            if is_udp_port_in_use(host, port):
+                raise PortInUseError(
+                    port,
+                    f"UDP port {port} is already in use. "
+                    "Stop the other process or use a different connection string.",
+                )
+
         loop = asyncio.new_event_loop()
         self._mavsdk_loop = loop  # Store reference for thread-safe calls
 
@@ -309,6 +402,8 @@ class Vehicle:
                 loop.run_until_complete(self._connect_async())
                 # Keep the loop running for telemetry
                 loop.run_forever()
+            except BaseException as e:
+                self._connection_error = e
             finally:
                 # Ensure all tasks are cancelled and loop is closed
                 pending = asyncio.all_tasks(loop)
@@ -327,6 +422,14 @@ class Vehicle:
         # Wait for connection with timeout
         start = time.time()
         while not self._has_heartbeat:
+            if self._connection_error is not None:
+                err = self._connection_error
+                self._connection_error = None
+                if isinstance(err, AerpawConnectionError):
+                    raise err
+                raise AerpawConnectionError(
+                    f"Connection failed: {err}", original_error=err
+                )
             if time.time() - start > CONNECTION_TIMEOUT_S:
                 raise ConnectionTimeoutError(CONNECTION_TIMEOUT_S)
             time.sleep(POLLING_DELAY_S)
@@ -358,7 +461,7 @@ class Vehicle:
             logger.warning("MAVSDK loop is not yet running, waiting...")
             start_time = time.time()
             while not self._mavsdk_loop.is_running() and time.time() - start_time < 5.0:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(POLLING_DELAY_S)
             if not self._mavsdk_loop.is_running():
                 raise RuntimeError("MAVSDK loop is not running")
 
@@ -384,13 +487,21 @@ class Vehicle:
         Asynchronously connect to the MAVSDK system and start telemetry tasks.
         """
         self._system = System(port=self._mavsdk_server_port)
-        await self._system.connect(system_address=self._connection_string)
-
-        # Wait for connection
+        await asyncio.wait_for(
+            self._system.connect(system_address=self._connection_string),
+            timeout=CONNECTION_TIMEOUT_S,
+        )
+        # Wait for connection state with timeout
+        start = time.time()
         async for state in self._system.core.connection_state():
             if state.is_connected:
                 self._has_heartbeat = True
                 break
+            if time.time() - start > CONNECTION_TIMEOUT_S:
+                raise ConnectionTimeoutError(
+                    CONNECTION_TIMEOUT_S,
+                    message="Connection established but no heartbeat received within timeout",
+                )
 
         # Start telemetry subscriptions
         await self._start_telemetry()
@@ -474,6 +585,7 @@ class Vehicle:
 
         async def _health_update():
             async for health in self._system.telemetry.health():
+                self._health_val.set(health) # Used to provide information when arming fails
                 self._is_armable_state.set(
                     health.is_global_position_ok
                     and health.is_home_position_ok
@@ -703,7 +815,10 @@ class Vehicle:
             await self._initialize_postarm()
 
         await wait_for_condition(
-            self.done_moving, poll_interval=POLLING_DELAY_S
+            self.done_moving,
+            timeout=DEFAULT_GOTO_TIMEOUT_S,
+            poll_interval=POLLING_DELAY_S,
+            timeout_message=f"Vehicle did not report done_moving within {DEFAULT_GOTO_TIMEOUT_S}s",
         )
 
     def _abort(self):
@@ -725,6 +840,9 @@ class Vehicle:
         """
         Clean up the `Vehicle` object/any state
         """
+        if self._closed:
+            return
+        self._closed = True
         logger.debug("Closing vehicle connection...")
         self._running.set(False)
 
@@ -758,6 +876,10 @@ class Vehicle:
 
         if hasattr(self, "_mavsdk_thread") and self._mavsdk_thread.is_alive():
             self._mavsdk_thread.join(timeout=5.0)
+            if self._mavsdk_thread.is_alive():
+                logger.warning(
+                    "MAVSDK thread did not exit within 5s; process will exit"
+                )
 
         # Clear system reference to help garbage collection release the gRPC server
         self._system = None
@@ -779,8 +901,9 @@ class Vehicle:
         """
         logger.debug(f"set_armed({value}) called")
         if not self._is_armable_state.get() and value:
-            logger.error("Cannot arm: vehicle not in armable state")
-            raise NotArmableError()
+            health_summary = self._get_health_status_summary()
+            logger.error(f"Cannot arm: vehicle not in armable state. Status: {health_summary}")
+            raise NotArmableError(f"Vehicle not armable. Status: {health_summary}")
 
         try:
             if value:
@@ -793,7 +916,9 @@ class Vehicle:
             # Wait for arm state to match
             await wait_for_condition(
                 lambda: self._armed_state.get() == value,
+                timeout=ARMABLE_TIMEOUT_S,
                 poll_interval=POLLING_DELAY_S,
+                timeout_message=f"Arm/disarm did not complete within {ARMABLE_TIMEOUT_S}s",
             )
             logger.debug(
                 f"Vehicle {'armed' if value else 'disarmed'} successfully"
@@ -820,14 +945,14 @@ class Vehicle:
         while not self._is_armable_state.get():
             if time.time() - start > ARMABLE_TIMEOUT_S:
                 logger.warning(
-                    f"Timeout waiting for armable state ({ARMABLE_TIMEOUT_S}s)"
+                    f"Timeout waiting for armable state ({ARMABLE_TIMEOUT_S}s). "
+                    f"Final status: {self._get_health_status_summary()}"
                 )
                 break
             # Log status at configured interval
             if time.time() - last_log > ARMABLE_STATUS_LOG_INTERVAL_S:
                 logger.debug(
-                    f"Waiting for armable state... "
-                    f"(GPS fix={self.gps.fix_type}, sats={self.gps.satellites_visible})"
+                    f"Waiting for armable state... Status: {self._get_health_status_summary()}"
                 )
                 last_log = time.time()
             time.sleep(POLLING_DELAY_S)
@@ -835,7 +960,9 @@ class Vehicle:
         if self._is_armable_state.get():
             logger.debug("Vehicle is armable")
         else:
-            logger.warning("Vehicle may not be fully ready to arm")
+            logger.warning(
+                f"Vehicle may not be fully ready to arm. Status: {self._get_health_status_summary()}"
+            )
 
         self._should_postarm_init = should_postarm_init
 
@@ -883,8 +1010,10 @@ class Vehicle:
                     timeout_message=f"Vehicle not armable after {CONNECTION_TIMEOUT_S}s - check GPS and pre-flight conditions",
                 )
             except TimeoutError as e:
-                logger.error(str(e))
-                raise NotArmableError(str(e))
+                health_summary = self._get_health_status_summary()
+                msg = f"{str(e)}. Status: {health_summary}"
+                logger.error(msg)
+                raise NotArmableError(msg)
 
             # Wait for GPS 3D fix explicitly. MAVSDK's is_global_position_ok can report
             # true before the autopilot has valid position for GUIDED mode (e.g. when
@@ -899,8 +1028,10 @@ class Vehicle:
                     timeout_message=f"No GPS 3D fix after {POSITION_READY_TIMEOUT_S}s - ensure SITL/hardware is fully started",
                 )
             except TimeoutError as e:
-                logger.error(str(e))
-                raise NotArmableError(str(e))
+                health_summary = self._get_health_status_summary()
+                msg = f"{str(e)}. Status: {health_summary}"
+                logger.error(msg)
+                raise NotArmableError(msg)
 
             logger.debug("Vehicle is armable, sending arm command...")
 
@@ -910,14 +1041,16 @@ class Vehicle:
 
         await asyncio.sleep(ARMING_SEQUENCE_DELAY_S)
 
-
         self._abortable = True
 
         # Wait for home position to be populated from telemetry (up to 5s)
         logger.debug("Waiting for auto-set home position...")
-        h_start = time.time()
-        while self._home_position.get() is None and time.time() - h_start < 5.0:
-            await asyncio.sleep(0.1)
+        await wait_for_condition(
+            lambda: self._home_position.get() is not None,
+            timeout=5.0,
+            poll_interval=POLLING_DELAY_S,
+            timeout_message="Home position not available within 5s",
+        )
 
         self._home_location = self.home_coords
         logger.debug(f"Home location set to: {self._home_location}")
@@ -990,3 +1123,24 @@ class Vehicle:
         Stop any background movement tasks.
         """
         self._ready_to_move = lambda _: True
+
+    def _get_health_status_summary(self) -> str:
+        """
+        Get a human-readable summary of the current vehicle health status.
+        """
+        health = self._health_val.get()
+        if health is None:
+            return "UNKNOWN (no telemetry)"
+
+        summary = (
+            f"Global: {'OK' if health.is_global_position_ok else 'FAIL'}, "
+            f"Home: {'OK' if health.is_home_position_ok else 'FAIL'}, "
+            f"Local: {'OK' if health.is_local_position_ok else 'FAIL'}, "
+            f"Armable: {'OK' if health.is_armable else 'FAIL'}, "
+            f"Gyro: {'OK' if health.is_gyrometer_calibration_ok else 'FAIL'}, "
+            f"Accel: {'OK' if health.is_accelerometer_calibration_ok else 'FAIL'}, "
+            f"Mag: {'OK' if health.is_magnetometer_calibration_ok else 'FAIL'}, "
+            f"Fix: {self.gps.fix_type} ({self.gps.satellites_visible} sats)"
+        )
+        return summary
+

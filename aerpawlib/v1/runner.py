@@ -17,6 +17,7 @@ import zmq
 import zmq.asyncio
 
 from .vehicle import Vehicle
+from .zmqutil import check_zmq_proxy_reachable
 from .constants import (
     STATE_MACHINE_DELAY_S,
     ZMQ_PROXY_IN_PORT,
@@ -398,7 +399,7 @@ class StateMachine(Runner):
                     except Exception as e:
                         logger.error(f"Background task {t.__name__} failed: {e}")
                         traceback.print_exc()
-                        await asyncio.sleep(1.0)  # Backoff before retry
+                        await asyncio.sleep(0.5)  # Backoff before retry
 
             future = asyncio.ensure_future(_task_runner())
             self._background_task_futures.append(future)
@@ -505,10 +506,19 @@ class ZmqStateMachine(StateMachine):
         """
         Configure ZMQ connection parameters.
 
+        The ZMQ proxy must be started before runners that use ZMQ bindings.
+        Use run_zmq_proxy() in a separate process, then start the runners.
+
         Args:
             vehicle_identifier (str): The identifier for this vehicle.
             proxy_server_addr (str): The address of the ZMQ proxy server.
         """
+        if not check_zmq_proxy_reachable(proxy_server_addr):
+            logger.warning(
+                "ZMQ proxy at %s is not reachable. Ensure the proxy is started "
+                "before this runner (run_zmq_proxy in a separate process).",
+                proxy_server_addr,
+            )
         self._zmq_identifier = vehicle_identifier
         self._zmq_proxy_server = proxy_server_addr
         self._zmq_context = zmq.asyncio.Context()

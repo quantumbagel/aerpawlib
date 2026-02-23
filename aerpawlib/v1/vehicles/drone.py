@@ -327,8 +327,8 @@ class Drone(Vehicle):
         """
         await self.await_ready_to_move()
         self._velocity_loop_active = False
-        # Wait for previous loop to exit (C5)
-        await asyncio.sleep(VELOCITY_UPDATE_DELAY_S + 0.1)
+        # Brief wait for previous velocity loop to observe flag and exit
+        await asyncio.sleep(VELOCITY_UPDATE_DELAY_S)
 
         if not global_relative:
             velocity_vector = velocity_vector.rotate_by_angle(-self.heading)
@@ -375,7 +375,7 @@ class Drone(Vehicle):
                                         VelocityNedYaw(0, 0, 0, yaw)
                                     )
                                 )
-                                await asyncio.sleep(0.1)
+                                await asyncio.sleep(0.05)
                             except (OffboardError, ActionError):
                                 pass
                             try:
@@ -419,7 +419,6 @@ class Drone(Vehicle):
                     VelocityNedYaw(0, 0, 0, self.heading)
                 )
             )
-            await asyncio.sleep(0.05)
             await self._run_on_mavsdk_loop(self._system.offboard.stop())
         except Exception as e:
             logger.debug("Stop offboard cleanup (may not be in offboard): %s", e)

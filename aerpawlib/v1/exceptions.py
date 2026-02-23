@@ -88,6 +88,15 @@ class MAVSDKNotInstalledError(AerpawConnectionError):
         )
 
 
+class PortInUseError(AerpawConnectionError):
+    """Raised when the MAVSDK server port is already in use."""
+
+    def __init__(self, port: int, message: Optional[str] = None):
+        msg = message or f"Port {port} is already in use (MAVSDK server cannot bind)"
+        super().__init__(msg)
+        self.port = port
+
+
 # =============================================================================
 # AERPAW Platform Errors
 # =============================================================================

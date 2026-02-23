@@ -19,6 +19,7 @@ import zmq
 
 from .util import Coordinate, do_intersect, inside, read_geofence
 from .constants import (
+    SAFETY_CHECKER_REQUEST_TIMEOUT_S,
     SERVER_STATUS_REQ,
     VALIDATE_WAYPOINT_REQ,
     VALIDATE_CHANGE_SPEED_REQ,
@@ -112,17 +113,24 @@ class SafetyCheckerClient:
         socket (zmq.Socket): The REQ socket for sending requests.
     """
 
-    def __init__(self, addr: str, port: int):
+    def __init__(
+        self, addr: str, port: int, timeout_s: float = SAFETY_CHECKER_REQUEST_TIMEOUT_S
+    ):
         """
         Initialize the safety checker client.
 
         Args:
             addr (str): The IP address of the safety checker server.
             port (int): The port the server is listening on.
+            timeout_s (float): Timeout for send/recv in seconds. Prevents indefinite
+                block if server is down. Defaults to SAFETY_CHECKER_REQUEST_TIMEOUT_S.
         """
-        #  Prepare our context and sockets
+        self._timeout_s = timeout_s
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
+        timeout_ms = int(timeout_s * 1000)
+        self.socket.setsockopt(zmq.RCVTIMEO, timeout_ms)
+        self.socket.setsockopt(zmq.SNDTIMEO, timeout_ms)
         self.socket.connect(f"tcp://{addr}:{port}")
 
     def close(self):
@@ -148,9 +156,17 @@ class SafetyCheckerClient:
 
         Returns:
             dict: The deserialized response from the server.
+
+        Raises:
+            TimeoutError: If the server does not respond within the configured timeout.
         """
-        self.socket.send(msg)
-        raw_msg = self.socket.recv()
+        try:
+            self.socket.send(msg)
+            raw_msg = self.socket.recv()
+        except zmq.Again:
+            raise TimeoutError(
+                f"Safety checker server did not respond within {self._timeout_s}s"
+            )
         message = deserialize_msg(raw_msg)
         logger.debug(f"Received reply [{message}]")
         return message

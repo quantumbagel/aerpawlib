@@ -1,13 +1,16 @@
 """Unit tests for aerpawlib v1 vehicle related components."""
 
 import math
+import socket
 from unittest.mock import patch
 
 import pytest
 
+from aerpawlib.v1.exceptions import PortInUseError
 from aerpawlib.v1.util import Coordinate
 from aerpawlib.v1.vehicle import (Drone, DummyVehicle, Rover, _AttitudeCompat, _BatteryCompat, _GPSInfoCompat,
                                   _VersionCompat)
+from aerpawlib.v1.vehicles.core_vehicle import _parse_udp_connection_port
 
 
 class TestBatteryCompat:
@@ -167,6 +170,55 @@ class TestDummyVehicleUnit:
         v = DummyVehicle()
         result = await v._initialize_postarm()
         assert result is None  # noop, just must not raise
+
+
+class TestParseUdpConnectionPort:
+    """Parse UDP connection strings used by aerpawlib/MAVSDK."""
+
+    def test_udp_listen_all(self):
+        assert _parse_udp_connection_port("udp://:14540") == ("0.0.0.0", 14540)
+
+    def test_udp_host_port(self):
+        assert _parse_udp_connection_port("udp://127.0.0.1:14550") == ("127.0.0.1", 14550)
+
+    def test_udpin_listen_all(self):
+        assert _parse_udp_connection_port("udpin://:14540") == ("0.0.0.0", 14540)
+
+    def test_udpin_host_port(self):
+        assert _parse_udp_connection_port("udpin://127.0.0.1:14551") == ("127.0.0.1", 14551)
+
+    def test_udpin_explicit_bind(self):
+        assert _parse_udp_connection_port("udpin://0.0.0.0:14540") == ("0.0.0.0", 14540)
+
+    def test_udpin_ipv6(self):
+        assert _parse_udp_connection_port("udpin://[::1]:14540") == ("::1", 14540)
+
+    def test_udpout_returns_none(self):
+        assert _parse_udp_connection_port("udpout://192.168.1.12:14550") is None
+
+    def test_serial_returns_none(self):
+        assert _parse_udp_connection_port("serial:///dev/ttyUSB0:57600") is None
+
+    def test_tcp_returns_none(self):
+        assert _parse_udp_connection_port("tcp://localhost:5760") is None
+
+
+class TestPortInUse:
+    """Port-in-use fails fast instead of hanging."""
+
+    def test_udp_port_in_use_raises_immediately(self):
+        """When UDP port from connection string is in use, Drone raises PortInUseError immediately."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.bind(("0.0.0.0", 0))
+        except (PermissionError, OSError):
+            pytest.skip("Cannot bind socket in this environment")
+        port = sock.getsockname()[1]
+        try:
+            with pytest.raises(PortInUseError, match="already in use"):
+                Drone(f"udp://:{port}")
+        finally:
+            sock.close()
 
 
 class TestVehicleValidationUnit:

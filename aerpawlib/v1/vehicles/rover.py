@@ -82,17 +82,15 @@ class Rover(Vehicle):
         )
         await self.await_ready_to_move()
 
-        # FIX: Rovers must be in HOLD/GUIDED mode before goto_location
-        # will be accepted by ArduPilot. Unlike drones, where takeoff()
-        # implicitly enters GUIDED mode, rovers go straight from arming
-        # to goto_coordinates(). Without this, the rover stays in
-        # MANUAL/STABILIZE mode and goto_location is silently ignored.
         try:
-            await self._run_on_mavsdk_loop(
-                self._system.action.hold()
+            await self._run_on_mavsdk_loop(self._system.action.hold())
+            await wait_for_condition(
+                lambda: self.mode == "HOLD",
+                timeout=5.0,
+                poll_interval=POLLING_DELAY_S,
+                timeout_message="HOLD mode did not engage within 5s",
             )
-            await asyncio.sleep(0.5)  # Let mode transition settle
-        except ActionError as e:
+        except (ActionError, TimeoutError) as e:
             logger.warning(f"Could not set HOLD mode: {e}")
 
         self._ready_to_move = lambda _: False

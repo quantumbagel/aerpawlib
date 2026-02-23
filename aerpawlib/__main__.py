@@ -438,7 +438,8 @@ def run_v1_experiment(
         logger.info("Connecting to vehicle...")
         try:
             async def create_vehicle_inner():
-                v = vehicle_type(args.conn)
+                # Run blocking constructor off event loop to keep it responsive
+                v = await asyncio.to_thread(vehicle_type, args.conn)
                 if hasattr(v, "_connected"):
                     start = time.time()
                     while (
@@ -450,7 +451,9 @@ def run_v1_experiment(
                         raise TimeoutError("Connection timeout")
                 return v
 
-            vehicle = await asyncio.wait_for(create_vehicle_inner(), timeout=args.conn_timeout)
+            vehicle = await asyncio.wait_for(
+                create_vehicle_inner(), timeout=args.conn_timeout
+            )
         except Exception as e:
             raise ConnectionError(f"Could not connect: {e}")
 
@@ -494,7 +497,11 @@ def run_v1_experiment(
         finally:
             # RTL/Cleanup
             if vehicle:
-                if vehicle.armed and args.rtl_at_end:
+                if (
+                    not vehicle._closed
+                    and vehicle.armed
+                    and args.rtl_at_end
+                ):
                     logger.warning("Vehicle still armed! RTLing...")
                     try:
                         if args.vehicle == "drone":

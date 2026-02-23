@@ -58,6 +58,8 @@ sitl = [
     "empy<4.0.0",
     "pexpect>=4.8.0",
     "MAVProxy>=1.8.0",
+    "dronecan>=1.0.0",
+    "future>=1.0.0",
 ]
 all = [
     "aerpawlib[dev]",

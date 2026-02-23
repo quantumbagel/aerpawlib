@@ -38,8 +38,9 @@ DEFAULT_WAIT_FOR_EXTERNAL_ARM = True
 # Log interval while waiting for arm (seconds)
 WAITING_FOR_ARM_LOG_INTERVAL_S = 5.0
 
-# Delay after entering GUIDED mode before proceeding (seconds)
-POST_GUIDED_DELAY_S = 1.0
+# Delay between steps of the arm -> guided -> takeoff sequence (seconds)
+# This provides time for the autopilot to process each command
+ARMING_SEQUENCE_DELAY_S = 2.0
 
 # Minimum time to wait after arming before attempting takeoff (seconds)
 MIN_ARM_TO_TAKEOFF_DELAY_S = 2.0
@@ -75,13 +76,9 @@ DEFAULT_GOTO_TIMEOUT_S = 300.0
 # Timing Constants
 
 
-# Delay between steps of the arm -> guided -> takeoff sequence (seconds)
-# This provides time for the autopilot to process each command
-ARMING_SEQUENCE_DELAY_S = 2.0
-
 # Post-takeoff stabilization delay (seconds)
-# Allows the vehicle to stabilize at target altitude before proceeding
-POST_TAKEOFF_STABILIZATION_S = 5.0
+# Brief pause for controller to settle before next command
+POST_TAKEOFF_STABILIZATION_S = 1.0
 
 # Interval for internal state update loop (seconds)
 INTERNAL_UPDATE_DELAY_S = 0.1
@@ -90,7 +87,7 @@ INTERNAL_UPDATE_DELAY_S = 0.1
 STATE_MACHINE_DELAY_S = 0.01
 
 # Delay for velocity command update loop (seconds)
-VELOCITY_UPDATE_DELAY_S = 0.1
+VELOCITY_UPDATE_DELAY_S = 0.05
 
 # Logging interval when waiting for armable state (seconds)
 ARMABLE_STATUS_LOG_INTERVAL_S = 5.0
@@ -157,6 +154,9 @@ ZMQ_QUERY_FIELD_TIMEOUT_S = 30.0
 
 
 # Safety Checker Constants
+
+# Timeout for safety checker client send/recv (seconds) - prevents indefinite block if server is down
+SAFETY_CHECKER_REQUEST_TIMEOUT_S = 10.0
 
 # Safety Checker Request Types
 SERVER_STATUS_REQ = "server_status_req"
