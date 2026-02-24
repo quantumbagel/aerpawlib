@@ -184,7 +184,7 @@ class SafetyCheckerClient:
         Returns:
             Tuple[bool, str]: A tuple containing (result, message).
         """
-        return (response["result"], response["message"])
+        return response["result"], response["message"]
 
     def parseResponse(self, response):
         return self.parse_response(response)
@@ -203,14 +203,14 @@ class SafetyCheckerClient:
     def checkServerStatus(self):
         return self.check_server_status()
 
-    def validate_waypoint_command(self, curLoc: Coordinate, nextLoc: Coordinate):
+    def validate_waypoint_command(self, current_location: Coordinate, next_location: Coordinate):
         """
         Makes sure path from current location to next waypoint stays inside geofence and avoids no-go zones.
         Returns a tuple (bool, str)
         (False, <error message>) if the waypoint violates geofence or no-go zone constraints, else (True, "").
         """
         msg = serialize_request(
-            VALIDATE_WAYPOINT_REQ, [curLoc.to_json(), nextLoc.to_json()]
+            VALIDATE_WAYPOINT_REQ, [current_location.to_json(), next_location.to_json()]
         )
         resp = self.send_request(msg)
         return self.parse_response(resp)
@@ -218,25 +218,25 @@ class SafetyCheckerClient:
     def validateWaypointCommand(self, curLoc: Coordinate, nextLoc: Coordinate):
         return self.validate_waypoint_command(curLoc, nextLoc)
 
-    def validate_change_speed_command(self, newSpeed):
+    def validate_change_speed_command(self, new_speed):
         """
-        Makes sure the provided newSpeed lies within the configured vehicle constraints
+        Makes sure the provided new_speed lies within the configured vehicle constraints
         Returns (False, <error message>) if the speed violates constraints, else (True, "").
         """
-        msg = serialize_request(VALIDATE_CHANGE_SPEED_REQ, [newSpeed])
+        msg = serialize_request(VALIDATE_CHANGE_SPEED_REQ, [new_speed])
         resp = self.send_request(msg)
         return self.parse_response(resp)
 
     def validateChangeSpeedCommand(self, newSpeed):
         return self.validate_change_speed_command(newSpeed)
 
-    def validate_takeoff_command(self, takeoffAlt, currentLat, currentLon):
+    def validate_takeoff_command(self, takeoff_alt, current_lat, current_lon):
         """
         Makes sure the takeoff altitude lies within the vehicle constraints
         Returns (False, <error message>) if the altitude violates constraints, else (True, "").
         """
         msg = serialize_request(
-            VALIDATE_TAKEOFF_REQ, [takeoffAlt, currentLat, currentLon]
+            VALIDATE_TAKEOFF_REQ, [takeoff_alt, current_lat, current_lon]
         )
         resp = self.send_request(msg)
         return self.parse_response(resp)
@@ -244,12 +244,12 @@ class SafetyCheckerClient:
     def validateTakeoffCommand(self, takeoffAlt, currentLat, currentLon):
         return self.validate_takeoff_command(takeoffAlt, currentLat, currentLon)
 
-    def validate_landing_command(self, currentLat, currentLon):
+    def validate_landing_command(self, current_lat, current_lon):
         """
         Ensure the copter is attempting to land within 5 meters of the takeoff location
         Returns (False, <error message>) if the coper is not within 5 meters, else (True, "").
         """
-        msg = serialize_request(VALIDATE_LANDING_REQ, [currentLat, currentLon])
+        msg = serialize_request(VALIDATE_LANDING_REQ, [current_lat, current_lon])
         resp = self.send_request(msg)
         return self.parse_response(resp)
 
@@ -425,43 +425,43 @@ class SafetyCheckerServer:
                     )
 
     def validate_waypoint_command(
-        self, curLoc: Coordinate, nextLoc: Coordinate
+        self, current_location: Coordinate, next_location: Coordinate
     ) -> Tuple[bool, str]:
         """
         Makes sure path from current location to next waypoint stays inside geofence and avoids no-go zones.
         Returns a tuple (bool, str)
         (False, <error message>) if the waypoint violates geofence or no-go zone constraints, else (True, "").
         """
-        logger.debug(f"Validating {nextLoc}")
+        logger.debug(f"Validating {next_location}")
 
         # Makes sure altitude of next waypoint is within regulations
         if self.vehicle_type == "copter":
-            if nextLoc.alt < self.min_alt or nextLoc.alt > self.max_alt:
+            if next_location.alt < self.min_alt or next_location.alt > self.max_alt:
                 return (
                     False,
                     "Invalid waypoint. Altitude of %s m is not within restrictions! ABORTING!"
-                    % nextLoc.alt,
+                    % next_location.alt,
                 )
 
         # Makes sure next waypoint is inside one of the include geofences
         dest_geofence = None
         for gf in self.include_geofences:
-            if inside(nextLoc.lon, nextLoc.lat, gf):
+            if inside(next_location.lon, next_location.lat, gf):
                 dest_geofence = gf
                 break
         if dest_geofence is None:
             return (
                 False,
                 "Invalid waypoint. Waypoint (%s,%s) is outside of the geofence. ABORTING!"
-                % (nextLoc.lat, nextLoc.lon),
+                % (next_location.lat, next_location.lon),
             )
         # Makes sure next waypoint is not in a no-go zone
         for zone in self.exclude_geofences:
-            if inside(nextLoc.lon, nextLoc.lat, zone):
+            if inside(next_location.lon, next_location.lat, zone):
                 return (
                     False,
                     "Invalid waypoint. Waypoint (%s,%s) is inside a no-go zone. ABORTING!"
-                    % (nextLoc.lat, nextLoc.lon),
+                    % (next_location.lat, next_location.lon),
                 )
         # Makes sure path between two points does not leave the
         # geofence that the destination was found inside of.
@@ -470,13 +470,13 @@ class SafetyCheckerServer:
             if do_intersect(
                 p1["lon"], p1["lat"],
                 p2["lon"], p2["lat"],
-                curLoc.lon, curLoc.lat,
-                nextLoc.lon, nextLoc.lat,
+                current_location.lon, current_location.lat,
+                next_location.lon, next_location.lat,
             ):
                 return (
                     False,
                     "Invalid waypoint. Path from (%s,%s) to waypoint (%s,%s) leaves geofence. ABORTING!"
-                    % (curLoc.lat, curLoc.lon, nextLoc.lat, nextLoc.lon),
+                    % (current_location.lat, current_location.lon, next_location.lat, next_location.lon),
                 )
 
         # Makes sure path between two points does not enter no-go zone
@@ -485,67 +485,67 @@ class SafetyCheckerServer:
                 if do_intersect(
                     p1["lon"], p1["lat"],
                     p2["lon"], p2["lat"],
-                    curLoc.lon, curLoc.lat,
-                    nextLoc.lon, nextLoc.lat,
+                    current_location.lon, current_location.lat,
+                    next_location.lon, next_location.lat,
                 ):
                     return (
                         False,
                         "Invalid waypoint. Path from (%s,%s) to waypoint (%s,%s) enters no-go zone. ABORTING!"
-                        % (curLoc.lat, curLoc.lon, nextLoc.lat, nextLoc.lon),
+                        % (current_location.lat, current_location.lon, next_location.lat, next_location.lon),
                     )
 
         # Next waypoint location is valid
-        return (True, "")
+        return True, ""
 
     def validateWaypointCommand(
         self, curLoc: Coordinate, nextLoc: Coordinate
     ) -> Tuple[bool, str]:
         return self.validate_waypoint_command(curLoc, nextLoc)
 
-    def validate_change_speed_command(self, newSpeed) -> Tuple[bool, str]:
+    def validate_change_speed_command(self, new_speed) -> Tuple[bool, str]:
         """
         Makes sure the provided newSpeed lies within the configured vehicle constraints
         Returns (False, <error message>) if the speed violates constraints, else (True, "").
         """
-        if newSpeed > self.max_speed:
+        if new_speed > self.max_speed:
             return (
                 False,
                 "Invalid speed (%s) greater than maximum (%s)"
-                % (newSpeed, self.max_speed),
+                % (new_speed, self.max_speed),
             )
-        if newSpeed < self.min_speed:
+        if new_speed < self.min_speed:
             return (
                 False,
                 "Invalid speed (%s) less than minimum (%s)"
-                % (newSpeed, self.min_speed),
+                % (new_speed, self.min_speed),
             )
         # New speed is valid
-        return (True, "")
+        return True, ""
 
     def validateChangeSpeedCommand(self, newSpeed) -> Tuple[bool, str]:
         return self.validate_change_speed_command(newSpeed)
 
-    def validate_takeoff_command(self, takeoffAlt, currentLat, currentLon):
+    def validate_takeoff_command(self, takeoff_alt, current_lat, current_lon):
         """
         Makes sure the takeoff altitude lies within the vehicle constraints
         Returns (False, <error message>) if the altitude violates constraints, else (True, "").
         """
         # Makes sure altitude is within regulations
         if self.vehicle_type == "copter":
-            if takeoffAlt < self.min_alt or takeoffAlt > self.max_alt:
+            if takeoff_alt < self.min_alt or takeoff_alt > self.max_alt:
                 return (
                     False,
-                    "Invalid takeoff altitude of %s m." % takeoffAlt,
+                    "Invalid takeoff altitude of %s m." % takeoff_alt,
                 )
         # Save takeoff location for validating landing
-        self.takeoff_location = Coordinate(currentLat, currentLon, alt=0)
+        self.takeoff_location = Coordinate(current_lat, current_lon, alt=0)
         # Takeoff command is valid
-        return (True, "")
+        return True, ""
 
     def validateTakeoffCommand(self, takeoffAlt, currentLat, currentLon):
         return self.validate_takeoff_command(takeoffAlt, currentLat, currentLon)
 
-    def validate_landing_command(self, currentLat, currentLon):
+    def validate_landing_command(self, current_lat, current_lon):
         """
         Ensure the copter is attempting to land within 5 meters of the takeoff location
         Returns (False, <error message>) if the coper is not within 5 meters, else (True, "").
@@ -556,24 +556,22 @@ class SafetyCheckerServer:
                 "Cannot validate landing: no takeoff location recorded. "
                 "Was validate_takeoff_command called first?",
             )
-        currentLocation = Coordinate(currentLat, currentLon, alt=0)
-        distance = self.takeoff_location.ground_distance(currentLocation)
+        current_location = Coordinate(current_lat, current_lon, alt=0)
+        distance = self.takeoff_location.ground_distance(current_location)
 
         if distance > 5:
             return (
                 False,
                 "Invalid landing location. Must be within 5 meters of takeoff location. Attempted landing location (%s,%s) is %f meters from takeoff location."
-                % (currentLat, currentLon, distance),
+                % (current_lat, current_lon, distance),
             )
         # Landing command is valid
-        return (True, "")
+        return True, ""
 
     def validateLandingCommand(self, currentLat, currentLon):
         return self.validate_landing_command(currentLat, currentLon)
 
-    #############################
-    ## Client Request Handlers ##
-    #############################
+    # Client Request Handlers
     def server_status_handler(self, *_params):
         """
         Handler for server status requests.
@@ -589,29 +587,29 @@ class SafetyCheckerServer:
     def serverStatusHandler(self, *_params):
         return self.server_status_handler(*_params)
 
-    def validate_waypoint_handler(self, curLocJSON, nextLocJSON, *_params):
+    def validate_waypoint_handler(self, current_json_location, next_json_location, *_params):
         """
         Handler for waypoint validation requests.
 
         Args:
-            curLocJSON (str): JSON string representing the current Coordinate.
-            nextLocJSON (str): JSON string representing the target Coordinate.
+            current_json_location (str): JSON string representing the current Coordinate.
+            next_json_location (str): JSON string representing the target Coordinate.
 
         Returns:
             bytes: Serialized validation response.
         """
-        curLocDict = json.loads(curLocJSON)
-        nextLocDict = json.loads(nextLocJSON)
-        curLoc = Coordinate(
-            lat=curLocDict["lat"], lon=curLocDict["lon"], alt=curLocDict["alt"]
+        current_dict_location = json.loads(current_json_location)
+        next_dict_location = json.loads(next_json_location)
+        current_location = Coordinate(
+            lat=current_dict_location["lat"], lon=current_dict_location["lon"], alt=current_dict_location["alt"]
         )
-        nextLoc = Coordinate(
-            lat=nextLocDict["lat"],
-            lon=nextLocDict["lon"],
-            alt=nextLocDict["alt"],
+        next_location = Coordinate(
+            lat=next_dict_location["lat"],
+            lon=next_dict_location["lon"],
+            alt=next_dict_location["alt"],
         )
 
-        result, message = self.validate_waypoint_command(curLoc, nextLoc)
+        result, message = self.validate_waypoint_command(current_location, next_location)
         msg = serialize_response(
             request_function=VALIDATE_WAYPOINT_REQ,
             result=result,
@@ -622,17 +620,17 @@ class SafetyCheckerServer:
     def validateWaypointHandler(self, curLocJSON, nextLocJSON, *_params):
         return self.validate_waypoint_handler(curLocJSON, nextLocJSON, *_params)
 
-    def validate_change_speed_handler(self, newSpeed, *_params):
+    def validate_change_speed_handler(self, new_speed, *_params):
         """
         Handler for speed change validation requests.
 
         Args:
-            newSpeed (float): The requested new speed.
+            new_speed (float): The requested new speed.
 
         Returns:
             bytes: Serialized validation response.
         """
-        result, message = self.validate_change_speed_command(newSpeed)
+        result, message = self.validate_change_speed_command(new_speed)
         msg = serialize_response(
             request_function=VALIDATE_CHANGE_SPEED_REQ,
             result=result,
@@ -644,21 +642,21 @@ class SafetyCheckerServer:
         return self.validate_change_speed_handler(newSpeed, *_params)
 
     def validate_takeoff_handler(
-        self, takeoffAlt, currentLat, currentLon, *_params
+        self, takeoff_alt, current_lat, current_lon, *_params
     ):
         """
         Handler for takeoff validation requests.
 
         Args:
-            takeoffAlt (float): The requested takeoff altitude.
-            currentLat (float): Current latitude.
-            currentLon (float): Current longitude.
+            takeoff_alt (float): The requested takeoff altitude.
+            current_lat (float): Current latitude.
+            current_lon (float): Current longitude.
 
         Returns:
             bytes: Serialized validation response.
         """
         result, message = self.validate_takeoff_command(
-            takeoffAlt, currentLat, currentLon
+            takeoff_alt, current_lat, current_lon
         )
         msg = serialize_response(
             request_function=VALIDATE_TAKEOFF_REQ,
@@ -674,18 +672,18 @@ class SafetyCheckerServer:
             takeoffAlt, currentLat, currentLon, *_params
         )
 
-    def validate_landing_handler(self, currentLat, currentLon, *_params):
+    def validate_landing_handler(self, current_lat, current_lon, *_params):
         """
         Handler for landing validation requests.
 
         Args:
-            currentLat (float): Current latitude.
-            currentLon (float): Current longitude.
+            current_lat (float): Current latitude.
+            current_lon (float): Current longitude.
 
         Returns:
             bytes: Serialized validation response.
         """
-        result, message = self.validate_landing_command(currentLat, currentLon)
+        result, message = self.validate_landing_command(current_lat, current_lon)
         msg = serialize_response(
             request_function=VALIDATE_LANDING_REQ,
             result=result,
