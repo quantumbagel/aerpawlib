@@ -571,3 +571,20 @@ async def connected_drone_v2(sitl_connection_string_drone: str) -> AsyncGenerato
         await _full_sitl_reset_v2(drone)
     finally:
         drone.close()
+
+
+@pytest_asyncio.fixture
+async def connected_rover_v2(sitl_connection_string_rover: str) -> AsyncGenerator:
+    """v2 Rover connected to SITL. Full reset before each test."""
+    from aerpawlib.v2.vehicle import Rover
+
+    rover = await _connect_and_wait_gps_v2(
+        Rover,
+        sitl_connection_string_rover,
+        mavsdk_server_port=DEFAULT_MAVSDK_SERVER_PORT_ROVER_V2,
+    )
+    yield rover
+    try:
+        await _full_sitl_reset_v2(rover)
+    finally:
+        rover.close()

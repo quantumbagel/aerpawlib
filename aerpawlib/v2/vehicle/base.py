@@ -52,12 +52,13 @@ async def _wait_for_condition(
     start = time.monotonic()
     while not condition():
         if timeout is not None and (time.monotonic() - start) > timeout:
+            logger.warning(f"_wait_for_condition timeout after {timeout}s: {timeout_message}")
             raise TimeoutError(timeout_message)
         await asyncio.sleep(poll_interval)  # Justified: yield to loop, allow telemetry
     return True
 
 
-class CommandHandle:
+class VehicleTask:
     """
     Handle for non-blocking commands with progress and cancellation.
 
@@ -69,22 +70,47 @@ class CommandHandle:
         self._cancelled = False
         self._progress: float = 0.0
         self._error: Optional[Exception] = None
+        self._on_cancel: Optional[Callable[[], object]] = None
 
     @property
     def progress(self) -> float:
         """Progress 0.0 to 1.0."""
         return self._progress
 
-    def _set_progress(self, value: float) -> None:
+    def is_done(self) -> bool:
+        """True if the command has completed (success, error, or cancelled)."""
+        return self._done.is_set()
+
+    def set_progress(self, value: float) -> None:
+        """Update progress (0.0-1.0). Internal use by command implementation."""
         self._progress = max(0.0, min(1.0, value))
 
-    def _set_done(self, error: Optional[Exception] = None) -> None:
+    def set_complete(self) -> None:
+        """Mark command as successfully complete. Internal use."""
+        self._error = None
+        self._done.set()
+
+    def set_error(self, error: Exception) -> None:
+        """Mark command as failed with error. Internal use."""
         self._error = error
         self._done.set()
 
+    def set_on_cancel(self, callback: Callable[[], object]) -> None:
+        """Set async callback to run when cancel() is called (e.g. RTL to stop goto)."""
+        self._on_cancel = callback
+
     def cancel(self) -> None:
-        """Request cancellation."""
+        """Request cancellation. Invokes on_cancel callback if set to stop the vehicle."""
+        logger.debug("VehicleTask: cancel requested")
         self._cancelled = True
+        if self._on_cancel:
+            try:
+                loop = asyncio.get_running_loop()
+                result = self._on_cancel()
+                if asyncio.iscoroutine(result):
+                    loop.create_task(result)
+            except RuntimeError:
+                pass
 
     def is_cancelled(self) -> bool:
         return self._cancelled
@@ -112,6 +138,7 @@ class Vehicle:
         self._mavsdk_server_port = mavsdk_server_port
         self._state = VehicleState()
         self._telemetry_tasks: List[asyncio.Task] = []
+        self._command_tasks: List[asyncio.Task] = []
         self._running = True
         self._closed = False
         self._ready_to_move: Callable[["Vehicle"], bool] = lambda _: True
@@ -135,6 +162,11 @@ class Vehicle:
     @property
     def connected(self) -> bool:
         return self._running and not self._closed
+
+    @property
+    def closed(self) -> bool:
+        """True if the vehicle connection has been closed."""
+        return self._closed
 
     @property
     def position(self) -> Coordinate:
@@ -186,17 +218,25 @@ class Vehicle:
         """
         Connect to vehicle. Returns initialized instance.
         """
+        logger.info(
+            f"Connecting to vehicle at {connection_string} "
+            f"(port={mavsdk_server_port}, timeout={timeout}s)"
+        )
         system = System(port=mavsdk_server_port)
         await asyncio.wait_for(
             system.connect(system_address=connection_string),
             timeout=timeout,
         )
+        logger.debug("MAVSDK connect() returned, waiting for connection state")
         # Wait for connection state
         start = time.monotonic()
         async for state in system.core.connection_state():
             if state.is_connected:
                 break
             if time.monotonic() - start > timeout:
+                logger.error(
+                    f"Connection timeout: no heartbeat within {timeout}s"
+                )
                 raise ConnectionTimeoutError(
                     timeout,
                     "Connection established but no heartbeat within timeout",
@@ -205,37 +245,40 @@ class Vehicle:
         # Create instance and start telemetry
         self = cls(system, connection_string, mavsdk_server_port)
         await self._start_telemetry()
+        logger.info("Vehicle connected and telemetry started")
         return self
 
     async def _start_telemetry(self) -> None:
         """Start telemetry subscriptions on same loop."""
+        logger.debug("Starting telemetry subscriptions (position, attitude, velocity, gps, battery, mode, armed, health, home)")
 
         async def _position_update() -> None:
             async for position in self._system.telemetry.position():
                 if not self._running:
                     return
-                self._state._position_lat = position.latitude_deg
-                self._state._position_lon = position.longitude_deg
-                self._state._position_alt = position.relative_altitude_m
-                self._state._position_abs_alt = position.absolute_altitude_m
+                self._state.update_position(
+                    position.latitude_deg,
+                    position.longitude_deg,
+                    position.relative_altitude_m,
+                    position.absolute_altitude_m,
+                )
                 self._heartbeat_tick()
 
         async def _attitude_update() -> None:
             async for att in self._system.telemetry.attitude_euler():
                 if not self._running:
                     return
-                self._state._attitude = Attitude(
+                self._state.update_attitude(
                     math.radians(att.roll_deg),
                     math.radians(att.pitch_deg),
                     math.radians(att.yaw_deg),
                 )
-                self._state._heading_deg = att.yaw_deg % 360
 
         async def _velocity_update() -> None:
             async for vel in self._system.telemetry.velocity_ned():
                 if not self._running:
                     return
-                self._state._velocity_ned = VectorNED(
+                self._state.update_velocity(
                     vel.north_m_s, vel.east_m_s, vel.down_m_s
                 )
 
@@ -243,58 +286,50 @@ class Vehicle:
             async for gps in self._system.telemetry.gps_info():
                 if not self._running:
                     return
-                self._state._gps = GPSInfo(
-                    gps.fix_type.value if hasattr(gps.fix_type, "value") else gps.fix_type,
-                    gps.num_satellites,
-                )
+                fix = gps.fix_type.value if hasattr(gps.fix_type, "value") else gps.fix_type
+                self._state.update_gps(fix, gps.num_satellites)
 
         async def _battery_update() -> None:
             async for bat in self._system.telemetry.battery():
                 if not self._running:
                     return
                 current = getattr(bat, "current_battery_a", 0.0) or 0.0
-                self._state._battery = Battery(
-                    bat.voltage_v,
-                    current,
-                    int(bat.remaining_percent),
+                self._state.update_battery(
+                    bat.voltage_v, current, int(bat.remaining_percent)
                 )
 
         async def _flight_mode_update() -> None:
             async for mode in self._system.telemetry.flight_mode():
                 if not self._running:
                     return
-                self._state._mode = mode.name
+                self._state.update_mode(mode.name)
 
         async def _armed_update() -> None:
             async for armed in self._system.telemetry.armed():
                 if not self._running:
                     return
-                old = self._state._armed
-                self._state._armed = armed
-                self._state._armed_telemetry_received = True
-                if armed and not old:
-                    self._state._last_arm_time = time.time()
+                self._state.update_armed(armed)
 
         async def _health_update() -> None:
             async for health in self._system.telemetry.health():
                 if not self._running:
                     return
-                self._state._armable = (
-                    health.is_global_position_ok
-                    and health.is_home_position_ok
-                    and health.is_armable
+                self._state.update_armable(
+                    health.is_global_position_ok,
+                    health.is_home_position_ok,
+                    health.is_armable,
                 )
 
         async def _home_update() -> None:
             async for home in self._system.telemetry.home():
                 if not self._running:
                     return
-                self._state._home = Coordinate(
+                self._state.update_home(
                     home.latitude_deg,
                     home.longitude_deg,
                     home.relative_altitude_m,
+                    home.absolute_altitude_m,
                 )
-                self._state._home_abs_alt = home.absolute_altitude_m
 
         for coro in [
             _position_update,
@@ -309,6 +344,7 @@ class Vehicle:
         ]:
             task = asyncio.create_task(coro())
             self._telemetry_tasks.append(task)
+        logger.debug(f"Started {len(self._telemetry_tasks)} telemetry tasks")
 
     def done_moving(self) -> bool:
         """True if ready for next command."""
@@ -321,19 +357,24 @@ class Vehicle:
     async def await_ready_to_move(self) -> None:
         """Wait until vehicle is ready for next command."""
         if self._should_postarm_init and not self.armed:
+            logger.debug("await_ready_to_move: vehicle not armed, running postarm init")
             await self._initialize_postarm()
+        logger.debug("await_ready_to_move: waiting for done_moving")
         await _wait_for_condition(
             self.done_moving,
             timeout=300.0,
             poll_interval=0.05,
             timeout_message="Vehicle did not report ready within timeout",
         )
+        logger.debug("await_ready_to_move: vehicle ready")
 
     async def set_armed(self, value: bool) -> None:
         """Arm or disarm."""
         from ..constants import CONNECTION_TIMEOUT_S
 
+        logger.info(f"set_armed({value})")
         if value and not self._state.armable:
+            logger.warning(f"Arm rejected: {self._get_health_summary()}")
             raise NotArmableError(
                 f"Vehicle not armable: {self._get_health_summary()}"
             )
@@ -375,14 +416,20 @@ class Vehicle:
         self._ready_to_move = lambda _: True
 
     def close(self) -> None:
-        """Clean up."""
+        """Clean up. Cancels all telemetry and command tasks."""
         if self._closed:
+            logger.debug("close() called but already closed")
             return
+        logger.info("Closing vehicle connection")
         self._closed = True
         self._running = False
-        for task in self._telemetry_tasks:
+        for task in getattr(self, "_telemetry_tasks", []):
+            task.cancel()
+        for task in getattr(self, "_command_tasks", []):
             task.cancel()
         self._telemetry_tasks.clear()
+        if hasattr(self, "_command_tasks"):
+            self._command_tasks.clear()
         self._system = None
         logger.info("Vehicle connection closed")
 
@@ -413,6 +460,7 @@ class DummyVehicle(Vehicle):
         self._connection_string = ""
         self._mavsdk_server_port = 50051
         self._telemetry_tasks = []
+        self._command_tasks = []
         self._running = True
         self._closed = False
         self._ready_to_move = lambda _: True
@@ -427,6 +475,15 @@ class DummyVehicle(Vehicle):
         timeout: float = CONNECTION_TIMEOUT_S,
     ) -> "DummyVehicle":
         return cls()
+
+    async def goto_coordinates(
+        self,
+        coordinates: "Coordinate",
+        tolerance: float = 2.0,
+        target_heading: Optional[float] = None,
+    ) -> None:
+        """No-op for dry-run."""
+        pass
 
     def close(self) -> None:
         self._closed = True

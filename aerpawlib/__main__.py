@@ -236,18 +236,17 @@ def run_v2_experiment(
         except Exception as e:
             raise ConnectionError(f"Could not connect: {e}")
 
-        if AERPAW_Platform:
-            AERPAW_Platform()._no_stdout = args.no_stdout
+        aerpaw_platform = AERPAW_Platform() if AERPAW_Platform else None
+        if aerpaw_platform:
+            aerpaw_platform.set_no_stdout(args.no_stdout)
 
-        shutdown_requested = False
+        shutdown_event = asyncio.Event()
 
         def handle_shutdown():
-            nonlocal shutdown_requested
             logger.warning("Initiating graceful shutdown...")
-            shutdown_requested = True
+            shutdown_event.set()
             if vehicle:
                 vehicle.close()
-            sys.exit(0)
 
         try:
             from aerpawlib.v2.safety.connection import (
@@ -259,21 +258,23 @@ def run_v2_experiment(
                 vehicle,
                 heartbeat_timeout=args.heartbeat_timeout,
                 on_disconnect=lambda: (
-                    AERPAW_Platform().log_to_oeo(
+                    aerpaw_platform.log_to_oeo(
                         "[aerpawlib] Connection lost", severity="CRITICAL"
                     )
-                    if AERPAW_Platform
+                    if aerpaw_platform
                     else None
                 ),
             )
             vehicle.set_heartbeat_tick_callback(conn_handler.heartbeat_tick)
             conn_handler.start()
+            disconnect_future = conn_handler.get_disconnect_future()
             setup_signal_handlers(
                 loop,
                 on_sigint=handle_shutdown,
                 on_sigterm=handle_shutdown,
             )
         except (ImportError, NotImplementedError):
+            disconnect_future = None
             signal.signal(signal.SIGINT, lambda s, f: handle_shutdown())
             signal.signal(signal.SIGTERM, lambda s, f: handle_shutdown())
 
@@ -283,15 +284,43 @@ def run_v2_experiment(
 
         success = False
         try:
-            await runner.run(vehicle)
-            success = True
+            run_task = asyncio.create_task(runner.run(vehicle))
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+            tasks = [run_task, shutdown_task]
+            if disconnect_future is not None:
+                tasks.append(disconnect_future)
+            done, pending = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                if hasattr(t, "cancel"):
+                    t.cancel()
+            if shutdown_event.is_set():
+                run_task.cancel()
+                try:
+                    await run_task
+                except asyncio.CancelledError:
+                    pass
+            elif disconnect_future is not None and disconnect_future in done:
+                run_task.cancel()
+                try:
+                    await run_task
+                except asyncio.CancelledError:
+                    pass
+                exc = disconnect_future.exception()
+                if exc is not None:
+                    raise exc
+            else:
+                await run_task
+                success = True
         except Exception as e:
             logger.error(f"Experiment failed: {e}")
             traceback.print_exc()
         finally:
             if vehicle:
                 if (
-                    not getattr(vehicle, "_closed", True)
+                    not vehicle.closed
                     and vehicle.armed
                     and args.rtl_at_end
                 ):

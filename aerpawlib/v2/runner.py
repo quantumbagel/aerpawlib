@@ -104,10 +104,9 @@ class _StateDescriptor:
             owner._v2_states = {}
         owner._v2_states[self.name] = self
         if self.first:
-            if "_v2_initial_state" not in owner.__dict__:
-                owner._v2_initial_state = self.name
-            else:
-                raise MultipleInitialStatesError()
+            if "_v2_initial_states" not in owner.__dict__:
+                owner._v2_initial_states = []
+            owner._v2_initial_states.append(self.name)
 
     def __get__(self, obj: Any, objtype: Optional[type] = None) -> Any:
         if obj is None:
@@ -214,7 +213,13 @@ class BasicRunner(Runner):
             raise RunnerError("Multiple @entrypoint decorators found")
         name, desc = entrypoints[0]
         method = getattr(self, name)
-        await method(vehicle)
+        logger.info(f"BasicRunner: starting entrypoint '{name}'")
+        try:
+            await method(vehicle)
+            logger.info(f"BasicRunner: entrypoint '{name}' completed")
+        except Exception as e:
+            logger.error(f"BasicRunner: entrypoint '{name}' failed: {e}")
+            raise
 
 
 class StateMachine(Runner):
@@ -230,10 +235,12 @@ class StateMachine(Runner):
         return dict(states) if states else {}
 
     def _get_initial_state(self) -> str:
-        initial = getattr(self.__class__, "_v2_initial_state", None)
-        if not initial:
+        initial_states = getattr(self.__class__, "_v2_initial_states", None) or []
+        if len(initial_states) > 1:
+            raise MultipleInitialStatesError()
+        if not initial_states:
             raise NoInitialStateError()
-        return initial
+        return initial_states[0]
 
     def _get_backgrounds(self) -> List[tuple]:
         return getattr(self.__class__, "_v2_backgrounds", [])
@@ -244,8 +251,11 @@ class StateMachine(Runner):
     async def _run_state(
         self, state_desc: _StateDescriptor, vehicle: Any
     ) -> str:
+        logger.debug(f"StateMachine: entering state '{state_desc.name}'")
         if state_desc.state_type == _StateType.STANDARD:
-            return await state_desc.__get__(self, type(self))(vehicle)
+            next_state = await state_desc.__get__(self, type(self))(vehicle)
+            logger.debug(f"StateMachine: state '{state_desc.name}' -> '{next_state}'")
+            return next_state
         # Timed state
         running = True
         last_state = ""
@@ -263,40 +273,64 @@ class StateMachine(Runner):
             return last_state
 
         task = asyncio.create_task(_bg())
+        logger.debug(
+            f"StateMachine: timed_state '{state_desc.name}' "
+            f"(duration={state_desc.duration}s, loop={state_desc.loop})"
+        )
         await asyncio.sleep(state_desc.duration)  # Justified: timed_state duration
         running = False
-        return await task
+        next_state = await task
+        logger.debug(f"StateMachine: timed_state '{state_desc.name}' -> '{next_state}'")
+        return next_state
 
     async def run(self, vehicle: Any) -> None:
         states = self._get_states()
         self._current_state = self._get_initial_state()
         self._running = True
+        logger.info(
+            f"StateMachine: starting with initial state '{self._current_state}' "
+            f"(states: {list(states.keys())})"
+        )
 
         # Run at_init tasks
-        for name, desc in self._get_at_init():
+        at_init_list = self._get_at_init()
+        if at_init_list:
+            logger.debug(f"StateMachine: running {len(at_init_list)} at_init task(s)")
+        for name, desc in at_init_list:
+            logger.debug(f"StateMachine: at_init '{name}'")
             method = getattr(self, name)
             await method(vehicle)
 
         # Start background tasks
-        for name, desc in self._get_backgrounds():
+        backgrounds = self._get_backgrounds()
+        if backgrounds:
+            logger.info(f"StateMachine: starting {len(backgrounds)} background task(s)")
+        for name, desc in backgrounds:
             method = getattr(self, name)
 
-            async def _bg_task(m=method):
+            async def _bg_task(task):
                 while self._running:
                     try:
-                        await m(vehicle)
+                        await task(vehicle)
                     except asyncio.CancelledError:
                         return
                     except Exception as e:
-                        logger.error(f"Background task failed: {e}")
+                        logger.error(
+                            f"Background task '{name}' failed: {e}",
+                            exc_info=True,
+                        )
                         await asyncio.sleep(0.5)
 
-            fut = asyncio.create_task(_bg_task())
+            fut = asyncio.create_task(_bg_task(method))
             self._background_futures.append(fut)
 
         # Main state loop
         while self._running:
             if self._current_state not in states:
+                logger.error(
+                    f"StateMachine: invalid state '{self._current_state}' "
+                    f"(valid: {list(states.keys())})"
+                )
                 raise InvalidStateError(
                     self._current_state, list(states.keys())
                 )
@@ -304,10 +338,13 @@ class StateMachine(Runner):
             next_state = await self._run_state(state_desc, vehicle)
             self._current_state = next_state
             if next_state is None:
+                logger.info(f"StateMachine: completed (final state returned None)")
                 break
             await asyncio.sleep(STATE_MACHINE_DELAY_S)
 
         self._running = False
+        logger.info("StateMachine: stopping")
+
         for fut in self._background_futures:
             fut.cancel()
         if self._background_futures:
@@ -318,4 +355,5 @@ class StateMachine(Runner):
 
     def stop(self) -> None:
         """Stop the state machine after current state."""
+        logger.debug(f"StateMachine: stop() called (current state: {self._current_state})")
         self._running = False

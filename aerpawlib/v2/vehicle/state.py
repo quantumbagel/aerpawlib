@@ -6,6 +6,8 @@ Plain attributes updated by telemetry (no ThreadSafeValue).
 
 from __future__ import annotations
 
+import math
+import time
 from typing import Optional
 
 from ..types import Attitude, Battery, Coordinate, GPSInfo, VectorNED
@@ -84,3 +86,50 @@ class VehicleState:
     @property
     def mode(self) -> str:
         return self._mode
+
+    @property
+    def last_arm_time(self) -> float:
+        return self._last_arm_time
+
+    def update_position(
+        self, lat: float, lon: float, rel_alt: float, abs_alt: float
+    ) -> None:
+        self._position_lat = lat
+        self._position_lon = lon
+        self._position_alt = rel_alt
+        self._position_abs_alt = abs_alt
+
+    def update_attitude(self, roll: float, pitch: float, yaw: float) -> None:
+        self._attitude = Attitude(roll, pitch, yaw)
+        self._heading_deg = math.degrees(yaw) % 360
+
+    def update_velocity(self, north: float, east: float, down: float) -> None:
+        self._velocity_ned = VectorNED(north, east, down)
+
+    def update_gps(self, fix_type: int, satellites: int) -> None:
+        self._gps = GPSInfo(fix_type, satellites)
+
+    def update_battery(self, voltage: float, current: float, level: int) -> None:
+        self._battery = Battery(voltage, current, level)
+
+    def update_mode(self, mode: str) -> None:
+        self._mode = mode
+
+    def update_armed(self, armed: bool) -> None:
+        old = self._armed
+        self._armed = armed
+        self._armed_telemetry_received = True
+        if armed and not old:
+            self._last_arm_time = time.time()
+
+    def update_armable(
+        self,
+        global_ok: bool,
+        home_ok: bool,
+        armable: bool,
+    ) -> None:
+        self._armable = global_ok and home_ok and armable
+
+    def update_home(self, lat: float, lon: float, rel_alt: float, abs_alt: float) -> None:
+        self._home = Coordinate(lat, lon, rel_alt)
+        self._home_abs_alt = abs_alt

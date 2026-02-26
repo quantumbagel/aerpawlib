@@ -49,6 +49,7 @@ class SafetyCheckerClient:
         self._addr = addr
         self._port = port
         self._timeout_s = timeout_s
+        logger.info(f"SafetyCheckerClient: connecting to {addr}:{port} (timeout={timeout_s}s)")
         self._ctx = zmq.asyncio.Context()
         self._socket = self._ctx.socket(zmq.REQ)
         timeout_ms = int(timeout_s * 1000)
@@ -57,6 +58,7 @@ class SafetyCheckerClient:
         self._socket.connect(f"tcp://{addr}:{port}")
 
     def close(self) -> None:
+        logger.debug("SafetyCheckerClient: closing connection")
         self._socket.close()
         self._ctx.term()
 
@@ -64,7 +66,9 @@ class SafetyCheckerClient:
         await self._socket.send(msg)
         raw = await self._socket.recv()
         resp = _deserialize_response(raw)
-        return resp["result"], resp.get("message", "")
+        result, message = resp["result"], resp.get("message", "")
+        logger.debug(f"SafetyCheckerClient: response result={result}, message={message}")
+        return result, message
 
     async def check_server_status(self) -> Tuple[bool, str]:
         msg = _serialize_request(SERVER_STATUS_REQ, [])
@@ -73,6 +77,10 @@ class SafetyCheckerClient:
     async def validate_waypoint(
         self, current: Coordinate, next_loc: Coordinate
     ) -> Tuple[bool, str]:
+        logger.debug(
+            f"SafetyCheckerClient: validate_waypoint current=({current.lat:.6f},{current.lon:.6f}) "
+            f"next=({next_loc.lat:.6f},{next_loc.lon:.6f})"
+        )
         msg = _serialize_request(
             VALIDATE_WAYPOINT_REQ,
             [current.to_json(), next_loc.to_json()],

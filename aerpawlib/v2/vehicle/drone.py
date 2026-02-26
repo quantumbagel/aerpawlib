@@ -31,7 +31,7 @@ from ..exceptions import (
 )
 from ..log import LogComponent, get_logger
 from ..types import Coordinate, VectorNED
-from .base import CommandHandle, Vehicle, _validate_tolerance, _wait_for_condition
+from .base import Vehicle, VehicleTask, _validate_tolerance, _wait_for_condition
 
 logger = get_logger(LogComponent.DRONE)
 
@@ -56,6 +56,7 @@ class Drone(Vehicle):
     async def _initialize_prearm(self, should_postarm_init: bool = True) -> None:
         """Wait for pre-arm conditions. Call before run."""
         self._should_postarm_init = should_postarm_init
+        logger.info("Drone: _initialize_prearm started (waiting for armable)")
         from ..constants import ARMABLE_TIMEOUT_S, ARMABLE_STATUS_LOG_INTERVAL_S, POLLING_DELAY_S
 
         start = time.monotonic()
@@ -71,13 +72,16 @@ class Drone(Vehicle):
                 logger.debug(f"Waiting for armable... {self._get_health_summary()}")
                 last_log = time.monotonic()
             await asyncio.sleep(POLLING_DELAY_S)
+        logger.info("Drone: _initialize_prearm done (armable or timeout)")
 
     async def _initialize_postarm(self) -> None:
         """Arm and prepare for mission (SITL/standalone: auto-arm)."""
         from ..constants import ARMING_SEQUENCE_DELAY_S, POSITION_READY_TIMEOUT_S
 
         if not self._should_postarm_init:
+            logger.debug("Drone: _initialize_postarm skipped (_should_postarm_init=False)")
             return
+        logger.info("Drone: _initialize_postarm (waiting for armable, GPS fix, arming)")
         await _wait_for_condition(
             lambda: self._state.armable,
             timeout=30.0,
@@ -95,6 +99,7 @@ class Drone(Vehicle):
             timeout=5.0,
             timeout_message="Home position not available",
         )
+        logger.info("Drone: _initialize_postarm done (armed, home position set)")
 
     async def set_heading(
         self,
@@ -122,7 +127,7 @@ class Drone(Vehicle):
         try:
             await self._system.offboard.set_position_ned(
                 PositionNedYaw(
-                    north_m, east_m, -self._state._position_alt, heading
+                    north_m, east_m, -self.position.alt, heading
                 )
             )
             try:
@@ -147,8 +152,9 @@ class Drone(Vehicle):
         min_alt_tolerance: float = DEFAULT_TAKEOFF_ALTITUDE_TOLERANCE,
     ) -> None:
         """Takeoff to altitude (m)."""
+        logger.info(f"Drone: takeoff to {altitude}m (min_alt_tolerance={min_alt_tolerance})")
         await self.await_ready_to_move()
-        time_since_arm = time.time() - self._state._last_arm_time
+        time_since_arm = time.time() - self._state.last_arm_time
         if time_since_arm < MIN_ARM_TO_TAKEOFF_DELAY_S:
             delay = MIN_ARM_TO_TAKEOFF_DELAY_S - time_since_arm
             await asyncio.sleep(delay)  # Justified: min arm-to-takeoff delay
@@ -162,11 +168,14 @@ class Drone(Vehicle):
             )
             await _wait_for_condition(lambda: self.done_moving())
             await asyncio.sleep(POST_TAKEOFF_STABILIZATION_S)  # Justified: stabilization
+            logger.info(f"Drone: takeoff complete (altitude {altitude}m)")
         except ActionError as e:
+            logger.error(f"Drone: takeoff failed: {e}")
             raise TakeoffError(str(e), original_error=e)
 
     async def land(self) -> None:
         """Land and wait for disarm."""
+        logger.info("Drone: land")
         await self.await_ready_to_move()
         try:
             await self._system.action.land()
@@ -174,11 +183,14 @@ class Drone(Vehicle):
                 lambda: not self.armed,
                 poll_interval=0.05,
             )
+            logger.info("Drone: land complete (disarmed)")
         except ActionError as e:
+            logger.error(f"Drone: land failed: {e}")
             raise LandingError(str(e), original_error=e)
 
     async def return_to_launch(self) -> None:
         """RTL and wait for disarm."""
+        logger.info("Drone: return_to_launch (RTL)")
         await self.await_ready_to_move()
         try:
             await self._system.action.return_to_launch()
@@ -186,7 +198,9 @@ class Drone(Vehicle):
                 lambda: not self.armed,
                 poll_interval=0.05,
             )
+            logger.info("Drone: return_to_launch complete (disarmed)")
         except ActionError as e:
+            logger.error(f"Drone: return_to_launch failed: {e}")
             raise RTLError(str(e), original_error=e)
 
     async def goto_coordinates(
@@ -196,8 +210,12 @@ class Drone(Vehicle):
         target_heading: Optional[float] = None,
         timeout: float = DEFAULT_GOTO_TIMEOUT_S,
         blocking: bool = True,
-    ) -> Optional[CommandHandle]:
-        """Goto coordinates. If blocking=False, returns CommandHandle."""
+    ) -> Optional[VehicleTask]:
+        """Goto coordinates. If blocking=False, returns VehicleTask."""
+        logger.info(
+            f"Drone: goto_coordinates ({coordinates.lat:.6f}, {coordinates.lon:.6f}, "
+            f"alt={coordinates.alt}m) tolerance={tolerance}m, blocking={blocking}"
+        )
         _validate_tolerance(tolerance, "tolerance")
         if target_heading is not None:
             await self.set_heading(target_heading, blocking=False)
@@ -216,6 +234,7 @@ class Drone(Vehicle):
                 coordinates.lat, coordinates.lon, target_alt, heading
             )
         except ActionError as e:
+            logger.error(f"Drone: goto_location failed: {e}")
             raise NavigationError(str(e), original_error=e)
         self._ready_to_move = lambda s: coordinates.distance(s.position) <= tolerance
         self._current_heading = None
@@ -226,9 +245,17 @@ class Drone(Vehicle):
                 timeout=timeout,
                 timeout_message=f"Goto timed out within {timeout}s",
             )
+            logger.debug("Drone: goto_coordinates complete (blocking)")
             return None
 
-        handle = CommandHandle()
+        handle = VehicleTask()
+        logger.debug("Drone: goto_coordinates returning non-blocking VehicleTask")
+
+        async def _on_cancel() -> None:
+            await self.return_to_launch()
+
+        handle.set_on_cancel(_on_cancel)
+
         initial_dist = coordinates.distance(self.position)
 
         async def _wait_arrival() -> None:
@@ -238,27 +265,28 @@ class Drone(Vehicle):
                     timeout=timeout,
                 )
                 if handle.is_cancelled():
-                    handle._set_done()
+                    handle.set_complete()
                     return
-                handle._set_progress(1.0)
-                handle._set_done()
+                handle.set_progress(1.0)
+                handle.set_complete()
             except TimeoutError as e:
-                handle._set_done(NavigationError(str(e), original_error=e))
+                handle.set_error(NavigationError(str(e), original_error=e))
             except Exception as e:
-                handle._set_done(e)
+                handle.set_error(e)
 
         async def _progress_updater() -> None:
-            while not handle._done.is_set():
+            while not handle.is_done():
                 if handle.is_cancelled():
                     return
                 d = coordinates.distance(self.position)
                 if initial_dist > 0:
                     p = 1.0 - (d / initial_dist)
-                    handle._set_progress(max(0, min(1, p)))
+                    handle.set_progress(max(0, min(1, p)))
                 await asyncio.sleep(0.2)  # Justified: progress polling interval
 
-        asyncio.create_task(_wait_arrival())
-        asyncio.create_task(_progress_updater())
+        t1 = asyncio.create_task(_wait_arrival())
+        t2 = asyncio.create_task(_progress_updater())
+        self._command_tasks.extend([t1, t2])
         return handle
 
     async def set_velocity(
@@ -268,6 +296,10 @@ class Drone(Vehicle):
         duration: Optional[float] = None,
     ) -> None:
         """Set velocity in NED frame."""
+        logger.info(
+            f"Drone: set_velocity NED=({velocity.north:.2f}, {velocity.east:.2f}, "
+            f"{velocity.down:.2f}) m/s, duration={duration}s"
+        )
         await self.await_ready_to_move()
         self._velocity_loop_active = False
         await asyncio.sleep(VELOCITY_UPDATE_DELAY_S)  # Let previous loop exit
@@ -311,7 +343,8 @@ class Drone(Vehicle):
                         pass
 
             self._velocity_loop_active = True
-            asyncio.create_task(_velocity_loop())
+            vel_task = asyncio.create_task(_velocity_loop())
+            self._command_tasks.append(vel_task)
         except (OffboardError, ActionError) as e:
             raise VelocityError(str(e), original_error=e)
 

@@ -2,7 +2,7 @@
 aerpawlib v2 API - async-first vehicle control.
 
 Modern replacement for v1 with single event loop, native async telemetry,
-descriptor-based runners, CommandHandle for progress/cancellation, and
+descriptor-based runners, VehicleTask for progress/cancellation, and
 built-in safety/connection handling.
 
 Usage:

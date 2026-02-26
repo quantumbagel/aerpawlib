@@ -51,12 +51,18 @@ class AERPAW_Platform:
                 f"http://{self._forw_addr}:{self._forw_port}/ping",
                 timeout=1,
             )
+            logger.info(f"AERPAW platform: connected to forward server {self._forw_addr}:{self._forw_port}")
             return True
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"AERPAW platform: not in AERPAW environment ({self._forw_addr}:{self._forw_port} unreachable: {e})")
             return False
 
     def _is_aerpaw_environment(self) -> bool:
         return self._connected
+
+    def set_no_stdout(self, value: bool) -> None:
+        """Suppress stdout when True."""
+        self._no_stdout = value
 
     def log_to_oeo(
         self,
@@ -82,6 +88,6 @@ class AERPAW_Platform:
             if agent_id:
                 url += f"/{agent_id}"
             requests.post(url, timeout=3)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
             if not self._no_stdout:
-                logger.error("Failed to send message to OEO")
+                logger.error(f"Failed to send message to OEO: {e}")

@@ -35,6 +35,10 @@ class Rover(Vehicle):
         timeout: float = DEFAULT_GOTO_TIMEOUT_S,
     ) -> None:
         """Navigate to coordinates (2D ground). target_heading ignored."""
+        logger.info(
+            f"Rover: goto_coordinates ({coordinates.lat:.6f}, {coordinates.lon:.6f}) "
+            f"tolerance={tolerance}m, timeout={timeout}s"
+        )
         _validate_tolerance(tolerance, "tolerance")
         await self.await_ready_to_move()
         try:
@@ -45,8 +49,9 @@ class Rover(Vehicle):
                 timeout_message="HOLD mode did not engage",
             )
         except (ActionError, TimeoutError) as e:
-            logger.warning(f"Could not set HOLD: {e}")
+            logger.warning(f"Rover: Could not set HOLD before goto: {e}")
         self._ready_to_move = lambda _: False
+        logger.debug("Rover: sending goto_location command")
         try:
             await self._system.action.goto_location(
                 coordinates.lat,
@@ -62,7 +67,10 @@ class Rover(Vehicle):
                 timeout=timeout,
                 timeout_message=f"Rover failed to reach destination within {timeout}s",
             )
+            logger.info("Rover: goto_coordinates complete")
         except ActionError as e:
+            logger.error(f"Rover: goto_coordinates failed (ActionError): {e}")
             raise NavigationError(str(e), original_error=e)
         except TimeoutError as e:
+            logger.error(f"Rover: goto_coordinates failed (timeout): {e}")
             raise NavigationError(str(e), original_error=e)
